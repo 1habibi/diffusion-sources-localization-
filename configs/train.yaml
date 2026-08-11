@@ -1,0 +1,22 @@
+experiment: joint_full
+
+data:
+  directory: data/generated/pilot
+  feature_indices: [0, 1]
+
+model:
+  input_dim: 2
+  hidden_dim: 64
+  dropout: 0.2
+
+training:
+  seed: 2026
+  device: cpu
+  learning_rate: 0.001
+  max_epochs: 100
+  patience: 10
+
+loss:
+  lambda_count: 1.0
+  lambda_consistency: 0.1
+  use_pos_weight: true

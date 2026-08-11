@@ -1,0 +1,14 @@
+seed: 2026
+uniform_repeats: 100
+fractions: [1.0, 0.75, 0.5]
+noise_levels: [0.0, 0.05, 0.1]
+run_robustness: true
+run_process_shift: true
+
+configs:
+  generation: configs/pilot.yaml
+  joint: configs/train.yaml
+  node: configs/train_node.yaml
+  without_consistency: configs/train_no_consistency.yaml
+  hidden_generation: configs/pilot_hidden_source.yaml
+  hidden_training: configs/train_hidden_source.yaml

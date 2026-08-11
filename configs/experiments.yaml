@@ -1,0 +1,19 @@
+seeds: [2026, 2027, 2028]
+
+experiments:
+  joint_full:
+    kind: joint
+    config: configs/train.yaml
+    prediction: joint_estimated_k
+  joint_without_consistency:
+    kind: joint
+    config: configs/train_no_consistency.yaml
+    prediction: joint_estimated_k
+  node_only:
+    kind: node
+    config: configs/train_node.yaml
+    prediction: node_thresholded
+  joint_infected_only:
+    kind: joint
+    config: configs/train_infected_only.yaml
+    prediction: joint_estimated_k

@@ -1,0 +1,59 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "diffusion-sources"
+version = "0.1.0"
+description = "Multi-source diffusion localization for the diploma project"
+requires-python = ">=3.10"
+dependencies = [
+    "networkx>=3.2",
+    "numpy>=1.26",
+    "matplotlib>=3.10",
+    "PyYAML>=6.0",
+    "scikit-learn>=1.7",
+    "streamlit>=1.49",
+    "torch>=2.13",
+    "torch-geometric>=2.8",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+]
+
+[project.scripts]
+generate-diffusion-dataset = "diffusion_sources.generation:main"
+train-diffusion-model = "diffusion_sources.train_cli:main"
+train-node-only-model = "diffusion_sources.node_train_cli:main"
+evaluate-diffusion-baselines = "diffusion_sources.evaluate_cli:main"
+build-diffusion-report = "diffusion_sources.reporting:main"
+build-diffusion-ablations = "diffusion_sources.ablations:main"
+build-feature-ablation = "diffusion_sources.feature_ablation:main"
+run-diffusion-series = "diffusion_sources.experiments:main"
+evaluate-diffusion-robustness = "diffusion_sources.robustness:main"
+evaluate-diffusion-process-shift = "diffusion_sources.process_shift:main"
+evaluate-diffusion-transfer = "diffusion_sources.transfer:main"
+build-hidden-source-report = "diffusion_sources.hidden_source_report:main"
+run-diffusion-workflow = "diffusion_sources.workflow:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-ra"
+filterwarnings = [
+    "ignore:`torch.jit.script` is not supported in Python 3.14:DeprecationWarning",
+    "ignore:Failing to pass a value to the 'type_params' parameter:DeprecationWarning",
+]
+
+[tool.coverage.run]
+source = ["diffusion_sources"]
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 80
+
+[tool.setuptools.packages.find]
+where = ["src"]

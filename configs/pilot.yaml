@@ -1,0 +1,25 @@
+graph:
+  id: karate
+  kind: karate
+
+simulation:
+  source_counts: [1, 2, 3]
+  probabilities: [0.25, 0.4]
+  max_steps: 3
+  distance_ranges:
+    - {min: 1, max: 2}
+    - {min: 3, max: 6}
+
+observation:
+  fractions: [1.0, 0.75]
+  false_positive_count: 0
+
+dataset:
+  seed: 2026
+  splits:
+    train: 30
+    validation: 9
+    test: 9
+  min_candidates: 5
+  max_infected_fraction: 0.75
+  max_attempt_factor: 100

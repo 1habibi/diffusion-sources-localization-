@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Environments
+.venv/
+venv/
+
+# Generated datasets and downloaded source data
+data/raw/
+data/processed/
+data/generated/
+
+# Model checkpoints and generated reports
+reports/
+*.pt
+
+# IDE and OS files
+.idea/
+.vscode/
+.DS_Store

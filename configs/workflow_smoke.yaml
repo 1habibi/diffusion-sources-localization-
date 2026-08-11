@@ -1,0 +1,21 @@
+seed: 17
+uniform_repeats: 3
+fractions: [1.0, 0.5]
+noise_levels: [0.0, 0.1]
+run_robustness: true
+run_process_shift: true
+
+training_overrides:
+  seed: 17
+  max_epochs: 2
+  patience: 2
+
+model_overrides:
+  hidden_dim: 8
+  dropout: 0.0
+
+configs:
+  generation: configs/pilot.yaml
+  joint: configs/train.yaml
+  node: configs/train_node.yaml
+  without_consistency: configs/train_no_consistency.yaml

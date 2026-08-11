@@ -1,0 +1,24 @@
+graph:
+  id: email_eu_core
+  kind: edge_list
+  path: data/raw/email-Eu-core.txt.gz
+
+simulation:
+  source_counts: [1, 2, 3]
+  probabilities: [0.05, 0.1]
+  max_steps: 3
+  distance_ranges:
+    - {min: 1, max: 2}
+    - {min: 3, max: 6}
+
+observation:
+  fractions: [1.0, 0.75, 0.5]
+  false_positive_count: 0
+
+dataset:
+  seed: 3026
+  splits:
+    test: 90
+  min_candidates: 5
+  max_infected_fraction: 0.5
+  max_attempt_factor: 100
