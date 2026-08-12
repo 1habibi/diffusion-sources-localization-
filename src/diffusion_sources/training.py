@@ -388,6 +388,7 @@ def fit_joint_model(
         train_history.append(train_metrics)
         validation_history.append(validation_metrics)
 
+        improved = validation_metrics.macro_f1 > best_score
         if validation_metrics.macro_f1 > best_score:
             best_score = validation_metrics.macro_f1
             best_epoch = epoch
@@ -399,6 +400,15 @@ def fit_joint_model(
             epochs_without_improvement += 1
             if epochs_without_improvement >= patience:
                 stop_reason = "early_stopping"
+        print(
+            f"Epoch {epoch}/{max_epochs} | "
+            f"train loss {train_metrics.loss:.4f} | "
+            f"val loss {validation_metrics.loss:.4f} | "
+            f"val F1 {validation_metrics.macro_f1:.4f} | "
+            f"best F1 {best_score:.4f} | "
+            f"{'improved' if improved else f'patience {epochs_without_improvement}/{patience}'} | "
+            f"{train_metrics.duration_seconds + validation_metrics.duration_seconds:.1f}s"
+        )
         if checkpoint_path is not None:
             save_last_checkpoint(
                 checkpoint_path,
@@ -481,6 +491,7 @@ def fit_node_model(
         )
         train_history.append(train_metrics)
         validation_history.append(validation_metrics)
+        improved = validation_metrics.macro_f1 > best_score
         if validation_metrics.macro_f1 > best_score:
             best_epoch, best_score, stale_epochs = epoch, validation_metrics.macro_f1, 0
             best_state = {
@@ -490,6 +501,15 @@ def fit_node_model(
             stale_epochs += 1
             if stale_epochs >= patience:
                 stop_reason = "early_stopping"
+        print(
+            f"Epoch {epoch}/{max_epochs} | "
+            f"train loss {train_metrics.loss:.4f} | "
+            f"val loss {validation_metrics.loss:.4f} | "
+            f"val F1 {validation_metrics.macro_f1:.4f} | "
+            f"best F1 {best_score:.4f} | "
+            f"{'improved' if improved else f'patience {stale_epochs}/{patience}'} | "
+            f"{train_metrics.duration_seconds + validation_metrics.duration_seconds:.1f}s"
+        )
         if checkpoint_path is not None:
             save_last_checkpoint(
                 checkpoint_path,
