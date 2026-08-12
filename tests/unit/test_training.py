@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import random
 
+import numpy as np
 import torch
 from torch_geometric.data import Data
 
@@ -145,6 +147,43 @@ def test_resume_restores_torch_random_state(tmp_path):
     load_last_checkpoint(checkpoint, restored_model, restored_optimizer, "cpu")
 
     assert torch.equal(torch.rand(3), expected)
+
+
+def test_load_checkpoint_restores_cuda_rng_states_on_cpu(tmp_path, monkeypatch):
+    checkpoint = tmp_path / "cuda_rng.pt"
+    model = JointSourceCountGCN(hidden_dim=8, dropout=0.0)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+    torch.save(
+        {
+            "epoch": 1,
+            "model_state_dict": model.state_dict(),
+            "optimizer_state_dict": optimizer.state_dict(),
+            "best_epoch": 1,
+            "best_score": 0.5,
+            "best_state_dict": model.state_dict(),
+            "stale_epochs": 0,
+            "train_history": [],
+            "validation_history": [],
+            "python_random_state": random.getstate(),
+            "numpy_random_state": np.random.get_state(),
+            "torch_random_state": torch.get_rng_state(),
+            "cuda_random_states": [torch.tensor([1], dtype=torch.uint8)],
+        },
+        checkpoint,
+    )
+    captured = {}
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(
+        torch.cuda,
+        "set_rng_state_all",
+        lambda states: captured.setdefault("states", states),
+    )
+    from diffusion_sources.training import load_last_checkpoint
+
+    load_last_checkpoint(checkpoint, model, optimizer, "cpu")
+
+    assert captured["states"][0].device.type == "cpu"
+    assert captured["states"][0].dtype == torch.uint8
 
 
 def test_node_training_resumes_from_last_checkpoint(tmp_path):

@@ -99,7 +99,9 @@ def load_last_checkpoint(
     np.random.set_state(checkpoint["numpy_random_state"])
     torch.set_rng_state(checkpoint["torch_random_state"].cpu())
     if torch.cuda.is_available() and checkpoint["cuda_random_states"] is not None:
-        torch.cuda.set_rng_state_all(checkpoint["cuda_random_states"])
+        torch.cuda.set_rng_state_all(
+            [state.cpu() for state in checkpoint["cuda_random_states"]]
+        )
     return {
         "start_epoch": int(checkpoint["epoch"]) + 1,
         "best_epoch": int(checkpoint["best_epoch"]),
