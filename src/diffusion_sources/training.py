@@ -14,6 +14,7 @@ import numpy as np
 import torch
 from sklearn.metrics import average_precision_score
 from torch_geometric.loader import DataLoader
+from tqdm.auto import tqdm
 
 from .inference import predict_joint, predict_oracle_k
 from .losses import joint_source_count_loss, masked_source_loss
@@ -121,13 +122,14 @@ def train_one_epoch(
     lambda_consistency: float = 0.1,
     pos_weight: torch.Tensor | None = None,
     batch_size: int = 1,
+    progress_description: str | None = None,
 ) -> None:
     """Perform one optimization pass over single-graph PyG examples."""
     if batch_size < 1:
         raise ValueError("batch_size must be positive.")
     model.train()
     loader = DataLoader(tuple(examples), batch_size=batch_size, shuffle=True)
-    for data in loader:
+    for data in tqdm(loader, desc=progress_description, leave=False, disable=progress_description is None):
         data = data.to(next(model.parameters()).device)
         optimizer.zero_grad()
         source_logits, count_logits = model(data)
@@ -153,13 +155,14 @@ def train_node_one_epoch(
     *,
     pos_weight: torch.Tensor | None = None,
     batch_size: int = 1,
+    progress_description: str | None = None,
 ) -> None:
     """Perform one optimization pass for the node-only baseline."""
     if batch_size < 1:
         raise ValueError("batch_size must be positive.")
     model.train()
     loader = DataLoader(tuple(examples), batch_size=batch_size, shuffle=True)
-    for data in loader:
+    for data in tqdm(loader, desc=progress_description, leave=False, disable=progress_description is None):
         data = data.to(next(model.parameters()).device)
         optimizer.zero_grad()
         logits = model(data)
@@ -180,6 +183,7 @@ def evaluate_epoch(
     lambda_consistency: float = 0.1,
     pos_weight: torch.Tensor | None = None,
     batch_size: int = 1,
+    progress_description: str | None = None,
 ) -> EpochMetrics:
     """Evaluate losses and localization/count metrics with dropout disabled."""
     if batch_size < 1:
@@ -194,7 +198,7 @@ def evaluate_epoch(
     scores_for_ap: list[float] = []
 
     loader = DataLoader(tuple(examples), batch_size=batch_size, shuffle=False)
-    for data in loader:
+    for data in tqdm(loader, desc=progress_description, leave=False, disable=progress_description is None):
         data = data.to(next(model.parameters()).device)
         source_logits, count_logits = model(data)
         loss = joint_source_count_loss(
@@ -268,6 +272,7 @@ def evaluate_node_epoch(
     learning_rate: float = 0.0,
     pos_weight: torch.Tensor | None = None,
     batch_size: int = 1,
+    progress_description: str | None = None,
 ) -> EpochMetrics:
     """Evaluate Node-only GCN in oracle-k mode for checkpoint selection."""
     if batch_size < 1:
@@ -279,7 +284,7 @@ def evaluate_node_epoch(
     labels_for_ap: list[float] = []
     scores_for_ap: list[float] = []
     loader = DataLoader(tuple(examples), batch_size=batch_size, shuffle=False)
-    for data in loader:
+    for data in tqdm(loader, desc=progress_description, leave=False, disable=progress_description is None):
         data = data.to(next(model.parameters()).device)
         logits = model(data)
         loss = masked_source_loss(
@@ -365,6 +370,7 @@ def fit_joint_model(
             lambda_consistency=lambda_consistency,
             pos_weight=pos_weight,
             batch_size=batch_size,
+            progress_description=f"Epoch {epoch}/{max_epochs} train",
         )
         learning_rate = float(optimizer.param_groups[0]["lr"])
         train_metrics = evaluate_epoch(
@@ -375,6 +381,7 @@ def fit_joint_model(
             lambda_consistency=lambda_consistency,
             pos_weight=pos_weight,
             batch_size=batch_size,
+            progress_description=f"Epoch {epoch}/{max_epochs} train eval",
         )
         validation_metrics = evaluate_epoch(
             model,
@@ -384,6 +391,7 @@ def fit_joint_model(
             lambda_consistency=lambda_consistency,
             pos_weight=pos_weight,
             batch_size=batch_size,
+            progress_description=f"Epoch {epoch}/{max_epochs} validation",
         )
         train_history.append(train_metrics)
         validation_history.append(validation_metrics)
@@ -473,6 +481,7 @@ def fit_node_model(
             optimizer,
             pos_weight=pos_weight,
             batch_size=batch_size,
+            progress_description=f"Epoch {epoch}/{max_epochs} train",
         )
         learning_rate = float(optimizer.param_groups[0]["lr"])
         train_metrics = evaluate_node_epoch(
@@ -481,6 +490,7 @@ def fit_node_model(
             learning_rate=learning_rate,
             pos_weight=pos_weight,
             batch_size=batch_size,
+            progress_description=f"Epoch {epoch}/{max_epochs} train eval",
         )
         validation_metrics = evaluate_node_epoch(
             model,
@@ -488,6 +498,7 @@ def fit_node_model(
             learning_rate=learning_rate,
             pos_weight=pos_weight,
             batch_size=batch_size,
+            progress_description=f"Epoch {epoch}/{max_epochs} validation",
         )
         train_history.append(train_metrics)
         validation_history.append(validation_metrics)
