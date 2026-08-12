@@ -168,6 +168,8 @@ def _summary(value) -> dict:
         "requested": value.requested,
         "accepted": value.accepted,
         "attempts": value.attempts,
+        "rejections": value.rejections,
+        "duration_seconds": value.duration_seconds,
         "output_dir": value.output_dir,
     }
 

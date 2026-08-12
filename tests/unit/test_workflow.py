@@ -37,7 +37,8 @@ def test_workflow_writes_manifest_with_mocked_stages(tmp_path, monkeypatch):
     )
     fake_generation = SimpleNamespace(
         graph_id="test", requested={"test": 1}, accepted={"test": 1},
-        attempts={"test": 1}, output_dir="data"
+        attempts={"test": 1}, rejections={"test": {}},
+        duration_seconds={"test": 0.1}, output_dir="data"
     )
     fake_metrics = {
         "prediction_metrics": {

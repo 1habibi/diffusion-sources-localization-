@@ -17,6 +17,7 @@ from .dataset import load_graph_archive, load_pyg_split
 from .inference import predict_oracle_k, predict_thresholded
 from .metrics import set_metrics, source_set_distances
 from .models import NodeOnlyGCN
+from .runtime import peak_memory_bytes, reset_peak_memory, runtime_metadata
 from .train_cli import calculate_pos_weight, load_train_config, set_seed
 from .training import evaluate_node_epoch, fit_node_model, save_training_result
 
@@ -100,15 +101,21 @@ def run_node_training(config: dict, output_dir: str | Path) -> dict:
     data_dir = Path(config["data"]["directory"])
     graph_id, graph = load_graph_archive(data_dir / "graph.npz")
     feature_indices = [int(value) for value in config["data"].get("feature_indices", [0, 1])]
+    split_limits = config["data"].get("split_limits", {})
     splits = {
         split: load_pyg_split(
-            data_dir / f"{split}.npz", graph, feature_indices=feature_indices
+            data_dir / f"{split}.npz",
+            graph,
+            feature_indices=feature_indices,
+            limit=(int(split_limits[split]) if split in split_limits else None),
         )
         for split in ("train", "validation", "test")
     }
     seed = int(config["training"].get("seed", 0))
     set_seed(seed)
     device = torch.device(config["training"].get("device", "cpu"))
+    if device.type == "cuda" and not torch.cuda.is_available():
+        raise RuntimeError("CUDA was requested but is not available.")
     for examples in splits.values():
         for data in examples:
             data.to(device)
@@ -126,6 +133,13 @@ def run_node_training(config: dict, output_dir: str | Path) -> dict:
         else None
     )
     started = time.perf_counter()
+    reset_peak_memory(device)
+    checkpoint_path = output_path / "last_checkpoint.pt"
+    resume_from = (
+        checkpoint_path
+        if bool(config["training"].get("resume", False)) and checkpoint_path.exists()
+        else None
+    )
     result = fit_node_model(
         model,
         splits["train"],
@@ -134,6 +148,9 @@ def run_node_training(config: dict, output_dir: str | Path) -> dict:
         max_epochs=int(config["training"].get("max_epochs", 100)),
         patience=int(config["training"].get("patience", 10)),
         pos_weight=pos_weight,
+        batch_size=int(config["training"].get("batch_size", 1)),
+        checkpoint_path=checkpoint_path,
+        resume_from=resume_from,
     )
     save_training_result(result, output_path)
     thresholds = [float(value) for value in config["inference"]["thresholds"]]
@@ -153,7 +170,11 @@ def run_node_training(config: dict, output_dir: str | Path) -> dict:
     metrics = {
         split: asdict(
             evaluate_node_epoch(
-                model, examples, learning_rate=learning_rate, pos_weight=pos_weight
+                model,
+                examples,
+                learning_rate=learning_rate,
+                pos_weight=pos_weight,
+                batch_size=int(config["training"].get("batch_size", 1)),
             )
         )
         for split, examples in splits.items()
@@ -168,10 +189,14 @@ def run_node_training(config: dict, output_dir: str | Path) -> dict:
         "stopped_epoch": result.stopped_epoch,
         "stop_reason": result.stop_reason,
         "training_seconds": time.perf_counter() - started,
+        "batch_size": int(config["training"].get("batch_size", 1)),
+        "resumed": resume_from is not None,
+        "peak_memory_bytes": peak_memory_bytes(device),
         "threshold": threshold,
         "validation_threshold_f1": validation_threshold_f1,
         "metrics": metrics,
         "prediction_metrics": prediction_metrics,
+        "runtime": runtime_metadata(device),
     }
     (output_path / "metrics.json").write_text(
         json.dumps(summary, indent=2), encoding="utf-8"

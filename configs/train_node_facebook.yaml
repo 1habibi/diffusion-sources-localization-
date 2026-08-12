@@ -1,0 +1,25 @@
+experiment: facebook_node_only
+
+data:
+  directory: data/generated/facebook_main
+  feature_indices: [0, 1]
+
+model:
+  input_dim: 2
+  hidden_dim: 64
+  dropout: 0.2
+
+training:
+  seed: 7026
+  device: cuda
+  learning_rate: 0.001
+  batch_size: 3
+  resume: true
+  max_epochs: 100
+  patience: 10
+
+loss:
+  use_pos_weight: true
+
+inference:
+  thresholds: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]

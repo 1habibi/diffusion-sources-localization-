@@ -6,7 +6,6 @@ import argparse
 import csv
 import json
 import random
-import sys
 import time
 from dataclasses import asdict
 from pathlib import Path
@@ -20,6 +19,7 @@ from .dataset import load_graph_archive, load_pyg_split
 from .inference import predict_joint, predict_oracle_k
 from .metrics import set_metrics, source_set_distances
 from .models import JointSourceCountGCN
+from .runtime import peak_memory_bytes, reset_peak_memory, runtime_metadata
 from .training import evaluate_epoch, fit_joint_model, save_training_result
 
 
@@ -35,10 +35,12 @@ def load_train_config(path: str | Path) -> dict[str, Any]:
 
 
 def set_seed(seed: int) -> None:
-    """Set seeds used by the current CPU training pipeline."""
+    """Set seeds used by CPU and CUDA training."""
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
 
 
 def calculate_pos_weight(examples: list) -> torch.Tensor:
@@ -61,9 +63,13 @@ def run_training(config: dict[str, Any], output_dir: str | Path) -> dict[str, An
     data_dir = Path(config["data"]["directory"])
     graph_id, graph = load_graph_archive(data_dir / "graph.npz")
     feature_indices = [int(value) for value in config["data"].get("feature_indices", [0, 1])]
+    split_limits = config["data"].get("split_limits", {})
     splits = {
         split: load_pyg_split(
-            data_dir / f"{split}.npz", graph, feature_indices=feature_indices
+            data_dir / f"{split}.npz",
+            graph,
+            feature_indices=feature_indices,
+            limit=(int(split_limits[split]) if split in split_limits else None),
         )
         for split in ("train", "validation", "test")
     }
@@ -92,8 +98,16 @@ def run_training(config: dict[str, Any], output_dir: str | Path) -> dict[str, An
     )
     lambda_count = float(config["loss"].get("lambda_count", 1.0))
     lambda_consistency = float(config["loss"].get("lambda_consistency", 0.1))
+    batch_size = int(config["training"].get("batch_size", 1))
+    checkpoint_path = output_path / "last_checkpoint.pt"
+    resume_from = (
+        checkpoint_path
+        if bool(config["training"].get("resume", False)) and checkpoint_path.exists()
+        else None
+    )
 
     started_at = time.perf_counter()
+    reset_peak_memory(device)
     result = fit_joint_model(
         model,
         splits["train"],
@@ -104,6 +118,9 @@ def run_training(config: dict[str, Any], output_dir: str | Path) -> dict[str, An
         lambda_count=lambda_count,
         lambda_consistency=lambda_consistency,
         pos_weight=pos_weight,
+        batch_size=batch_size,
+        checkpoint_path=checkpoint_path,
+        resume_from=resume_from,
     )
     training_seconds = time.perf_counter() - started_at
     save_training_result(result, output_path)
@@ -118,6 +135,7 @@ def run_training(config: dict[str, Any], output_dir: str | Path) -> dict[str, An
                 lambda_count=lambda_count,
                 lambda_consistency=lambda_consistency,
                 pos_weight=pos_weight,
+                batch_size=batch_size,
             )
         )
         for split, examples in splits.items()
@@ -141,10 +159,13 @@ def run_training(config: dict[str, Any], output_dir: str | Path) -> dict[str, An
         "pos_weight": float(pos_weight.item()) if pos_weight is not None else None,
         "lambda_count": lambda_count,
         "lambda_consistency": lambda_consistency,
+        "batch_size": batch_size,
+        "resumed": resume_from is not None,
+        "peak_memory_bytes": peak_memory_bytes(device),
         "metrics": metrics,
         "prediction_metrics": prediction_metrics,
         "split_sizes": {split: len(examples) for split, examples in splits.items()},
-        "versions": {"python": sys.version.split()[0], "torch": torch.__version__},
+        "runtime": runtime_metadata(device),
     }
     (output_path / "metrics.json").write_text(
         json.dumps(summary, indent=2), encoding="utf-8"

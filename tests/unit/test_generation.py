@@ -22,6 +22,7 @@ def tiny_config() -> dict:
             "min_candidates": 3,
             "max_infected_fraction": 0.9,
             "max_attempt_factor": 100,
+            "show_progress": False,
         },
     }
 
@@ -35,6 +36,13 @@ def test_generate_dataset_saves_topology_once_and_balanced_targets(tmp_path):
     train = np.load(tmp_path / "train.npz")
     assert train["features"].shape == (6, 34, 2)
     assert train["source_counts"].tolist() == [1, 2, 3, 1, 2, 3]
+    assert set(summary.rejections["train"]) == {
+        "source_distance",
+        "cascade_too_large",
+        "empty_observation",
+        "too_few_candidates",
+    }
+    assert summary.duration_seconds["train"] >= 0.0
 
 
 def test_graph_from_config_rejects_unknown_kind():

@@ -43,6 +43,9 @@ def test_load_generated_graph_and_split(tmp_path):
     )
     assert infected_only[0].x.shape == (34, 1)
 
+    limited = load_pyg_split(tmp_path / "train.npz", graph, limit=2)
+    assert len(limited) == 2
+
 
 def test_load_split_rejects_graph_with_wrong_node_count(tmp_path):
     generate_dataset(tiny_config(), tmp_path)

@@ -107,6 +107,7 @@ def load_pyg_split(
     path: str | Path,
     graph: nx.Graph,
     feature_indices: list[int] | None = None,
+    limit: int | None = None,
 ) -> list[Data]:
     """Load a generated split archive into independent PyG examples."""
     archive = np.load(Path(path), allow_pickle=False)
@@ -124,9 +125,12 @@ def load_pyg_split(
     if not feature_indices or min(feature_indices) < 0 or max(feature_indices) >= features.shape[2]:
         raise ValueError("feature_indices must select available feature columns.")
 
+    if limit is not None and limit < 1:
+        raise ValueError("limit must be positive when provided.")
+    example_count = min(len(features), limit) if limit is not None else len(features)
     edge_index = graph_to_edge_index(graph)
     examples: list[Data] = []
-    for index in range(len(features)):
+    for index in range(example_count):
         examples.append(
             Data(
                 x=torch.from_numpy(features[index][:, feature_indices]).float(),

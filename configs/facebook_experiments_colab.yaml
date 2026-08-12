@@ -1,0 +1,15 @@
+seeds: [7026, 7027, 7028]
+
+experiments:
+  facebook_joint_full:
+    kind: joint
+    config: configs/train_facebook.yaml
+    prediction: joint_estimated_k
+  facebook_joint_without_consistency:
+    kind: joint
+    config: configs/train_facebook_no_consistency.yaml
+    prediction: joint_estimated_k
+  facebook_node_only:
+    kind: node
+    config: configs/train_node_facebook.yaml
+    prediction: node_thresholded

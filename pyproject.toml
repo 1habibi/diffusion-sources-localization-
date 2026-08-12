@@ -16,6 +16,7 @@ dependencies = [
     "streamlit>=1.49",
     "torch>=2.13",
     "torch-geometric>=2.8",
+    "tqdm>=4.70",
 ]
 
 [project.optional-dependencies]
@@ -38,6 +39,8 @@ evaluate-diffusion-process-shift = "diffusion_sources.process_shift:main"
 evaluate-diffusion-transfer = "diffusion_sources.transfer:main"
 build-hidden-source-report = "diffusion_sources.hidden_source_report:main"
 run-diffusion-workflow = "diffusion_sources.workflow:main"
+download-diffusion-data = "diffusion_sources.download:main"
+analyze-diffusion-dataset = "diffusion_sources.dataset_analysis:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

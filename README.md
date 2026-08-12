@@ -60,6 +60,24 @@ Workflow последовательно выполняет генерацию д
 ## Отдельные команды
 
 ```bash
+# Загрузка основного SNAP-графа
+.venv/bin/python scripts/download_data.py
+
+# Facebook-пилот и его диагностика
+.venv/bin/python scripts/generate_dataset.py \
+  --config configs/facebook_pilot.yaml --output data/generated/facebook_pilot
+.venv/bin/python scripts/analyze_dataset.py \
+  --data data/generated/facebook_pilot --output reports/datasets/facebook_pilot
+
+# Короткое профилирование GCN на полном Facebook-графе
+.venv/bin/python scripts/train_model.py \
+  --config configs/train_facebook_profile.yaml \
+  --output reports/runs/facebook_profile
+
+# Основной датасет (запускать после проверки свободного места)
+.venv/bin/python scripts/generate_dataset.py \
+  --config configs/facebook_main.yaml --output data/generated/facebook_main
+
 # Генерация
 .venv/bin/python scripts/generate_dataset.py \
   --config configs/pilot.yaml --output data/generated/pilot
@@ -93,6 +111,10 @@ Workflow последовательно выполняет генерацию д
 ```
 
 В приложении можно выбрать источники, вероятность передачи, число тактов, наблюдаемость, шум и random seed. Интерфейс показывает истинные и найденные источники, количество источников, метрики и тепловую карту scores.
+
+## Google Colab
+
+Основные Facebook-эксперименты выполняются на GPU через `notebooks/colab_training.ipynb`. Подробная инструкция, структура Drive и правила resume описаны в `docs/colab_training.md`.
 
 ## Основные артефакты
 

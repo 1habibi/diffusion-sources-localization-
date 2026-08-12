@@ -4,14 +4,16 @@ from __future__ import annotations
 
 import csv
 import json
+import random
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Iterable
+from typing import Any, Iterable
 
 import numpy as np
 import torch
 from sklearn.metrics import average_precision_score
+from torch_geometric.loader import DataLoader
 
 from .inference import predict_joint, predict_oracle_k
 from .losses import joint_source_count_loss, masked_source_loss
@@ -42,6 +44,74 @@ class TrainingResult:
     best_state_dict: dict[str, torch.Tensor]
 
 
+def save_last_checkpoint(
+    path: str | Path,
+    *,
+    epoch: int,
+    model: torch.nn.Module,
+    optimizer: torch.optim.Optimizer,
+    best_epoch: int,
+    best_score: float,
+    best_state_dict: dict[str, torch.Tensor],
+    stale_epochs: int,
+    train_history: list[EpochMetrics],
+    validation_history: list[EpochMetrics],
+) -> None:
+    """Atomically save all state needed to resume at the next epoch."""
+    checkpoint_path = Path(path)
+    checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = checkpoint_path.with_suffix(checkpoint_path.suffix + ".tmp")
+    torch.save(
+        {
+            "epoch": epoch,
+            "model_state_dict": model.state_dict(),
+            "optimizer_state_dict": optimizer.state_dict(),
+            "best_epoch": best_epoch,
+            "best_score": best_score,
+            "best_state_dict": best_state_dict,
+            "stale_epochs": stale_epochs,
+            "train_history": [asdict(item) for item in train_history],
+            "validation_history": [asdict(item) for item in validation_history],
+            "python_random_state": random.getstate(),
+            "numpy_random_state": np.random.get_state(),
+            "torch_random_state": torch.get_rng_state(),
+            "cuda_random_states": (
+                torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None
+            ),
+        },
+        temporary_path,
+    )
+    temporary_path.replace(checkpoint_path)
+
+
+def load_last_checkpoint(
+    path: str | Path,
+    model: torch.nn.Module,
+    optimizer: torch.optim.Optimizer,
+    device: torch.device | str,
+) -> dict[str, Any]:
+    """Restore model and optimizer and return loop bookkeeping state."""
+    checkpoint = torch.load(path, map_location=device, weights_only=False)
+    model.load_state_dict(checkpoint["model_state_dict"])
+    optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+    random.setstate(checkpoint["python_random_state"])
+    np.random.set_state(checkpoint["numpy_random_state"])
+    torch.set_rng_state(checkpoint["torch_random_state"].cpu())
+    if torch.cuda.is_available() and checkpoint["cuda_random_states"] is not None:
+        torch.cuda.set_rng_state_all(checkpoint["cuda_random_states"])
+    return {
+        "start_epoch": int(checkpoint["epoch"]) + 1,
+        "best_epoch": int(checkpoint["best_epoch"]),
+        "best_score": float(checkpoint["best_score"]),
+        "best_state": checkpoint["best_state_dict"],
+        "stale_epochs": int(checkpoint["stale_epochs"]),
+        "train_history": [EpochMetrics(**item) for item in checkpoint["train_history"]],
+        "validation_history": [
+            EpochMetrics(**item) for item in checkpoint["validation_history"]
+        ],
+    }
+
+
 def train_one_epoch(
     model: torch.nn.Module,
     examples: Iterable,
@@ -50,10 +120,14 @@ def train_one_epoch(
     lambda_count: float = 1.0,
     lambda_consistency: float = 0.1,
     pos_weight: torch.Tensor | None = None,
+    batch_size: int = 1,
 ) -> None:
     """Perform one optimization pass over single-graph PyG examples."""
+    if batch_size < 1:
+        raise ValueError("batch_size must be positive.")
     model.train()
-    for data in examples:
+    loader = DataLoader(tuple(examples), batch_size=batch_size, shuffle=True)
+    for data in loader:
         optimizer.zero_grad()
         source_logits, count_logits = model(data)
         loss = joint_source_count_loss(
@@ -77,10 +151,14 @@ def train_node_one_epoch(
     optimizer: torch.optim.Optimizer,
     *,
     pos_weight: torch.Tensor | None = None,
+    batch_size: int = 1,
 ) -> None:
     """Perform one optimization pass for the node-only baseline."""
+    if batch_size < 1:
+        raise ValueError("batch_size must be positive.")
     model.train()
-    for data in examples:
+    loader = DataLoader(tuple(examples), batch_size=batch_size, shuffle=True)
+    for data in loader:
         optimizer.zero_grad()
         logits = model(data)
         loss = masked_source_loss(
@@ -99,8 +177,11 @@ def evaluate_epoch(
     lambda_count: float = 1.0,
     lambda_consistency: float = 0.1,
     pos_weight: torch.Tensor | None = None,
+    batch_size: int = 1,
 ) -> EpochMetrics:
     """Evaluate losses and localization/count metrics with dropout disabled."""
+    if batch_size < 1:
+        raise ValueError("batch_size must be positive.")
     started_at = time.perf_counter()
     model.eval()
     losses: list[tuple[float, float, float, float]] = []
@@ -110,7 +191,8 @@ def evaluate_epoch(
     labels_for_ap: list[float] = []
     scores_for_ap: list[float] = []
 
-    for data in examples:
+    loader = DataLoader(tuple(examples), batch_size=batch_size, shuffle=False)
+    for data in loader:
         source_logits, count_logits = model(data)
         loss = joint_source_count_loss(
             source_logits,
@@ -131,15 +213,27 @@ def evaluate_epoch(
                 loss.consistency.item(),
             )
         )
-        prediction = predict_joint(source_logits, count_logits, data.candidate_mask)
-        true_sources = set(torch.nonzero(data.source_labels, as_tuple=False).flatten().tolist())
-        f1_scores.append(set_metrics(true_sources, prediction.sources)["f1"])
-        true_count = int(data.source_count.item())
-        count_matches.append(float(prediction.source_count == true_count))
-        count_errors.append(float(abs(prediction.source_count - true_count)))
+        ptr = data.ptr if hasattr(data, "ptr") else torch.tensor([0, data.num_nodes])
+        for graph_index in range(count_logits.size(0)):
+            start = int(ptr[graph_index].item())
+            end = int(ptr[graph_index + 1].item())
+            prediction = predict_joint(
+                source_logits[start:end],
+                count_logits[graph_index : graph_index + 1],
+                data.candidate_mask[start:end],
+            )
+            true_sources = set(
+                torch.nonzero(
+                    data.source_labels[start:end], as_tuple=False
+                ).flatten().tolist()
+            )
+            f1_scores.append(set_metrics(true_sources, prediction.sources)["f1"])
+            true_count = int(data.source_count[graph_index].item())
+            count_matches.append(float(prediction.source_count == true_count))
+            count_errors.append(float(abs(prediction.source_count - true_count)))
         mask = data.candidate_mask.bool()
         labels_for_ap.extend(data.source_labels[mask].cpu().tolist())
-        scores_for_ap.extend(prediction.scores[mask].cpu().tolist())
+        scores_for_ap.extend(torch.sigmoid(source_logits[mask]).cpu().tolist())
 
     if not losses:
         raise ValueError("At least one example is required for evaluation.")
@@ -170,27 +264,42 @@ def evaluate_node_epoch(
     *,
     learning_rate: float = 0.0,
     pos_weight: torch.Tensor | None = None,
+    batch_size: int = 1,
 ) -> EpochMetrics:
     """Evaluate Node-only GCN in oracle-k mode for checkpoint selection."""
+    if batch_size < 1:
+        raise ValueError("batch_size must be positive.")
     started_at = time.perf_counter()
     model.eval()
     losses: list[float] = []
     f1_scores: list[float] = []
     labels_for_ap: list[float] = []
     scores_for_ap: list[float] = []
-    for data in examples:
+    loader = DataLoader(tuple(examples), batch_size=batch_size, shuffle=False)
+    for data in loader:
         logits = model(data)
         loss = masked_source_loss(
             logits, data.source_labels, data.candidate_mask, pos_weight=pos_weight
         )
         losses.append(float(loss.item()))
-        true_count = int(data.source_count.item())
-        prediction = predict_oracle_k(logits, data.candidate_mask, true_count)
-        true_sources = set(torch.nonzero(data.source_labels, as_tuple=False).flatten().tolist())
-        f1_scores.append(set_metrics(true_sources, prediction.sources)["f1"])
+        ptr = data.ptr if hasattr(data, "ptr") else torch.tensor([0, data.num_nodes])
+        source_counts = data.source_count.reshape(-1)
+        for graph_index in range(len(source_counts)):
+            start = int(ptr[graph_index].item())
+            end = int(ptr[graph_index + 1].item())
+            true_count = int(source_counts[graph_index].item())
+            prediction = predict_oracle_k(
+                logits[start:end], data.candidate_mask[start:end], true_count
+            )
+            true_sources = set(
+                torch.nonzero(
+                    data.source_labels[start:end], as_tuple=False
+                ).flatten().tolist()
+            )
+            f1_scores.append(set_metrics(true_sources, prediction.sources)["f1"])
         mask = data.candidate_mask.bool()
         labels_for_ap.extend(data.source_labels[mask].cpu().tolist())
-        scores_for_ap.extend(prediction.scores[mask].cpu().tolist())
+        scores_for_ap.extend(torch.sigmoid(logits[mask]).cpu().tolist())
     if not losses:
         raise ValueError("At least one example is required for evaluation.")
     return EpochMetrics(
@@ -218,6 +327,9 @@ def fit_joint_model(
     lambda_count: float = 1.0,
     lambda_consistency: float = 0.1,
     pos_weight: torch.Tensor | None = None,
+    batch_size: int = 1,
+    checkpoint_path: str | Path | None = None,
+    resume_from: str | Path | None = None,
 ) -> TrainingResult:
     """Train with early stopping on validation macro-F1."""
     train_data = tuple(train_examples)
@@ -227,15 +339,20 @@ def fit_joint_model(
     if max_epochs < 1 or patience < 1:
         raise ValueError("max_epochs and patience must be positive.")
 
-    train_history: list[EpochMetrics] = []
-    validation_history: list[EpochMetrics] = []
-    best_epoch = 0
-    best_score = -1.0
-    best_state: dict[str, torch.Tensor] = {}
-    epochs_without_improvement = 0
+    state = _initial_training_state(model)
+    if resume_from is not None:
+        state = load_last_checkpoint(
+            resume_from, model, optimizer, next(model.parameters()).device
+        )
+    train_history = state["train_history"]
+    validation_history = state["validation_history"]
+    best_epoch = state["best_epoch"]
+    best_score = state["best_score"]
+    best_state = state["best_state"]
+    epochs_without_improvement = state["stale_epochs"]
     stop_reason = "max_epochs"
 
-    for epoch in range(1, max_epochs + 1):
+    for epoch in range(state["start_epoch"], max_epochs + 1):
         train_one_epoch(
             model,
             train_data,
@@ -243,6 +360,7 @@ def fit_joint_model(
             lambda_count=lambda_count,
             lambda_consistency=lambda_consistency,
             pos_weight=pos_weight,
+            batch_size=batch_size,
         )
         learning_rate = float(optimizer.param_groups[0]["lr"])
         train_metrics = evaluate_epoch(
@@ -252,6 +370,7 @@ def fit_joint_model(
             lambda_count=lambda_count,
             lambda_consistency=lambda_consistency,
             pos_weight=pos_weight,
+            batch_size=batch_size,
         )
         validation_metrics = evaluate_epoch(
             model,
@@ -260,6 +379,7 @@ def fit_joint_model(
             lambda_count=lambda_count,
             lambda_consistency=lambda_consistency,
             pos_weight=pos_weight,
+            batch_size=batch_size,
         )
         train_history.append(train_metrics)
         validation_history.append(validation_metrics)
@@ -275,7 +395,21 @@ def fit_joint_model(
             epochs_without_improvement += 1
             if epochs_without_improvement >= patience:
                 stop_reason = "early_stopping"
-                break
+        if checkpoint_path is not None:
+            save_last_checkpoint(
+                checkpoint_path,
+                epoch=epoch,
+                model=model,
+                optimizer=optimizer,
+                best_epoch=best_epoch,
+                best_score=best_score,
+                best_state_dict=best_state,
+                stale_epochs=epochs_without_improvement,
+                train_history=train_history,
+                validation_history=validation_history,
+            )
+        if stop_reason == "early_stopping":
+            break
 
     model.load_state_dict(best_state)
     return TrainingResult(
@@ -297,25 +431,49 @@ def fit_node_model(
     max_epochs: int = 100,
     patience: int = 10,
     pos_weight: torch.Tensor | None = None,
+    batch_size: int = 1,
+    checkpoint_path: str | Path | None = None,
+    resume_from: str | Path | None = None,
 ) -> TrainingResult:
     """Train Node-only GCN with early stopping on validation oracle-k F1."""
     train_data = tuple(train_examples)
     validation_data = tuple(validation_examples)
     if not train_data or not validation_data:
         raise ValueError("Train and validation sets must not be empty.")
-    train_history: list[EpochMetrics] = []
-    validation_history: list[EpochMetrics] = []
-    best_epoch, best_score, stale_epochs = 0, -1.0, 0
-    best_state: dict[str, torch.Tensor] = {}
+    state = _initial_training_state(model)
+    if resume_from is not None:
+        state = load_last_checkpoint(
+            resume_from, model, optimizer, next(model.parameters()).device
+        )
+    train_history = state["train_history"]
+    validation_history = state["validation_history"]
+    best_epoch = state["best_epoch"]
+    best_score = state["best_score"]
+    best_state = state["best_state"]
+    stale_epochs = state["stale_epochs"]
     stop_reason = "max_epochs"
-    for epoch in range(1, max_epochs + 1):
-        train_node_one_epoch(model, train_data, optimizer, pos_weight=pos_weight)
+    for epoch in range(state["start_epoch"], max_epochs + 1):
+        train_node_one_epoch(
+            model,
+            train_data,
+            optimizer,
+            pos_weight=pos_weight,
+            batch_size=batch_size,
+        )
         learning_rate = float(optimizer.param_groups[0]["lr"])
         train_metrics = evaluate_node_epoch(
-            model, train_data, learning_rate=learning_rate, pos_weight=pos_weight
+            model,
+            train_data,
+            learning_rate=learning_rate,
+            pos_weight=pos_weight,
+            batch_size=batch_size,
         )
         validation_metrics = evaluate_node_epoch(
-            model, validation_data, learning_rate=learning_rate, pos_weight=pos_weight
+            model,
+            validation_data,
+            learning_rate=learning_rate,
+            pos_weight=pos_weight,
+            batch_size=batch_size,
         )
         train_history.append(train_metrics)
         validation_history.append(validation_metrics)
@@ -328,7 +486,21 @@ def fit_node_model(
             stale_epochs += 1
             if stale_epochs >= patience:
                 stop_reason = "early_stopping"
-                break
+        if checkpoint_path is not None:
+            save_last_checkpoint(
+                checkpoint_path,
+                epoch=epoch,
+                model=model,
+                optimizer=optimizer,
+                best_epoch=best_epoch,
+                best_score=best_score,
+                best_state_dict=best_state,
+                stale_epochs=stale_epochs,
+                train_history=train_history,
+                validation_history=validation_history,
+            )
+        if stop_reason == "early_stopping":
+            break
     model.load_state_dict(best_state)
     return TrainingResult(
         best_epoch=best_epoch,
@@ -338,6 +510,20 @@ def fit_node_model(
         validation_history=tuple(validation_history),
         best_state_dict=best_state,
     )
+
+
+def _initial_training_state(model: torch.nn.Module) -> dict[str, Any]:
+    return {
+        "start_epoch": 1,
+        "best_epoch": 0,
+        "best_score": -1.0,
+        "best_state": {
+            key: value.detach().cpu().clone() for key, value in model.state_dict().items()
+        },
+        "stale_epochs": 0,
+        "train_history": [],
+        "validation_history": [],
+    }
 
 
 def save_training_result(result: TrainingResult, output_dir: str | Path) -> None:

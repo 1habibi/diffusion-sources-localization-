@@ -12,6 +12,8 @@ from diffusion_sources.training import (
     fit_joint_model,
     fit_node_model,
     save_training_result,
+    train_node_one_epoch,
+    train_one_epoch,
 )
 
 
@@ -69,3 +71,107 @@ def test_fit_node_model_tracks_compatible_history():
     assert result.best_epoch >= 1
     assert metrics.count_loss == 0.0
     assert metrics.count_accuracy == 1.0
+
+
+def test_joint_training_supports_multi_graph_batch():
+    model = JointSourceCountGCN(hidden_dim=8, dropout=0.0)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+
+    train_one_epoch(model, [model_data(), model_data()], optimizer, batch_size=2)
+    metrics = evaluate_epoch(model, [model_data(), model_data()], batch_size=2)
+    assert 0.0 <= metrics.macro_f1 <= 1.0
+
+
+def test_node_training_supports_multi_graph_batch():
+    model = NodeOnlyGCN(hidden_dim=8, dropout=0.0)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+
+    train_node_one_epoch(model, [model_data(), model_data()], optimizer, batch_size=2)
+    metrics = evaluate_node_epoch(model, [model_data(), model_data()], batch_size=2)
+    assert 0.0 <= metrics.macro_f1 <= 1.0
+
+
+def test_joint_training_resumes_from_last_checkpoint(tmp_path):
+    checkpoint = tmp_path / "last.pt"
+    model = JointSourceCountGCN(hidden_dim=8, dropout=0.0)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+    first = fit_joint_model(
+        model,
+        [model_data()],
+        [model_data()],
+        optimizer,
+        max_epochs=1,
+        patience=3,
+        checkpoint_path=checkpoint,
+    )
+    resumed_model = JointSourceCountGCN(hidden_dim=8, dropout=0.0)
+    resumed_optimizer = torch.optim.Adam(resumed_model.parameters(), lr=0.01)
+    resumed = fit_joint_model(
+        resumed_model,
+        [model_data()],
+        [model_data()],
+        resumed_optimizer,
+        max_epochs=2,
+        patience=3,
+        checkpoint_path=checkpoint,
+        resume_from=checkpoint,
+    )
+
+    assert first.stopped_epoch == 1
+    assert resumed.stopped_epoch == 2
+    assert len(resumed.train_history) == 2
+
+
+def test_resume_restores_torch_random_state(tmp_path):
+    checkpoint = tmp_path / "rng.pt"
+    torch.manual_seed(123)
+    model = JointSourceCountGCN(hidden_dim=8, dropout=0.0)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+    fit_joint_model(
+        model,
+        [model_data()],
+        [model_data()],
+        optimizer,
+        max_epochs=1,
+        patience=3,
+        checkpoint_path=checkpoint,
+    )
+    expected = torch.rand(3)
+    torch.manual_seed(999)
+    restored_model = JointSourceCountGCN(hidden_dim=8, dropout=0.0)
+    restored_optimizer = torch.optim.Adam(restored_model.parameters(), lr=0.01)
+    from diffusion_sources.training import load_last_checkpoint
+
+    load_last_checkpoint(checkpoint, restored_model, restored_optimizer, "cpu")
+
+    assert torch.equal(torch.rand(3), expected)
+
+
+def test_node_training_resumes_from_last_checkpoint(tmp_path):
+    checkpoint = tmp_path / "node_last.pt"
+    model = NodeOnlyGCN(hidden_dim=8, dropout=0.0)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+    fit_node_model(
+        model,
+        [model_data()],
+        [model_data()],
+        optimizer,
+        max_epochs=1,
+        patience=3,
+        checkpoint_path=checkpoint,
+    )
+    resumed_model = NodeOnlyGCN(hidden_dim=8, dropout=0.0)
+    resumed_optimizer = torch.optim.Adam(resumed_model.parameters(), lr=0.01)
+    resumed = fit_node_model(
+        resumed_model,
+        [model_data()],
+        [model_data()],
+        resumed_optimizer,
+        max_epochs=2,
+        patience=3,
+        checkpoint_path=checkpoint,
+        resume_from=checkpoint,
+    )
+
+    assert resumed.stopped_epoch == 2
+    assert checkpoint.exists()
