@@ -32,6 +32,7 @@ def select_threshold(model, examples: list, thresholds: list[float]) -> tuple[fl
     for threshold in thresholds:
         scores = []
         for data in examples:
+            data = data.to(next(model.parameters()).device)
             prediction = predict_thresholded(model(data), data.candidate_mask, threshold)
             true_sources = torch.nonzero(
                 data.source_labels, as_tuple=False
@@ -49,6 +50,7 @@ def evaluate_node_predictions(model, examples: list, graph, threshold: float):
     model.eval()
     rows = []
     for index, data in enumerate(examples):
+        data = data.to(next(model.parameters()).device)
         logits = model(data)
         true_sources = frozenset(
             torch.nonzero(data.source_labels, as_tuple=False).flatten().cpu().tolist()
@@ -116,9 +118,6 @@ def run_node_training(config: dict, output_dir: str | Path) -> dict:
     device = torch.device(config["training"].get("device", "cpu"))
     if device.type == "cuda" and not torch.cuda.is_available():
         raise RuntimeError("CUDA was requested but is not available.")
-    for examples in splits.values():
-        for data in examples:
-            data.to(device)
     model = NodeOnlyGCN(
         input_dim=int(config["model"].get("input_dim", 2)),
         hidden_dim=int(config["model"].get("hidden_dim", 64)),

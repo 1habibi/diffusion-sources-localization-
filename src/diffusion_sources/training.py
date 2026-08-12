@@ -128,6 +128,7 @@ def train_one_epoch(
     model.train()
     loader = DataLoader(tuple(examples), batch_size=batch_size, shuffle=True)
     for data in loader:
+        data = data.to(next(model.parameters()).device)
         optimizer.zero_grad()
         source_logits, count_logits = model(data)
         loss = joint_source_count_loss(
@@ -159,6 +160,7 @@ def train_node_one_epoch(
     model.train()
     loader = DataLoader(tuple(examples), batch_size=batch_size, shuffle=True)
     for data in loader:
+        data = data.to(next(model.parameters()).device)
         optimizer.zero_grad()
         logits = model(data)
         loss = masked_source_loss(
@@ -193,6 +195,7 @@ def evaluate_epoch(
 
     loader = DataLoader(tuple(examples), batch_size=batch_size, shuffle=False)
     for data in loader:
+        data = data.to(next(model.parameters()).device)
         source_logits, count_logits = model(data)
         loss = joint_source_count_loss(
             source_logits,
@@ -277,6 +280,7 @@ def evaluate_node_epoch(
     scores_for_ap: list[float] = []
     loader = DataLoader(tuple(examples), batch_size=batch_size, shuffle=False)
     for data in loader:
+        data = data.to(next(model.parameters()).device)
         logits = model(data)
         loss = masked_source_loss(
             logits, data.source_labels, data.candidate_mask, pos_weight=pos_weight

@@ -79,10 +79,6 @@ def run_training(config: dict[str, Any], output_dir: str | Path) -> dict[str, An
     device = torch.device(config["training"].get("device", "cpu"))
     if device.type == "cuda" and not torch.cuda.is_available():
         raise RuntimeError("CUDA was requested but is not available.")
-    for examples in splits.values():
-        for data in examples:
-            data.to(device)
-
     model = JointSourceCountGCN(
         input_dim=int(config["model"].get("input_dim", 2)),
         hidden_dim=int(config["model"].get("hidden_dim", 64)),
@@ -182,6 +178,7 @@ def evaluate_test_predictions(model, examples: list, graph) -> tuple[list[dict],
     model.eval()
     rows: list[dict] = []
     for index, data in enumerate(examples):
+        data = data.to(next(model.parameters()).device)
         source_logits, count_logits = model(data)
         true_sources = frozenset(
             torch.nonzero(data.source_labels, as_tuple=False).flatten().cpu().tolist()
