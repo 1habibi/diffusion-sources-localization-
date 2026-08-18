@@ -16,9 +16,12 @@ def plot_demo_result(
     result: DemoResult,
     *,
     layout_seed: int = 17,
+    max_visual_nodes: int = 300,
 ) -> plt.Figure:
     """Plot observed state, source scores, true sources, and predictions."""
-    graph = result.graph
+    if max_visual_nodes < 1:
+        raise ValueError("max_visual_nodes must be positive.")
+    graph = _visualization_graph(result, max_visual_nodes)
     positions = nx.spring_layout(graph, seed=layout_seed)
     nodes = sorted(graph.nodes())
     scores = result.prediction.scores.detach().cpu().numpy()
@@ -36,7 +39,10 @@ def plot_demo_result(
         node_size=170, edgecolors="#243642", linewidths=0.5, ax=axes[0]
     )
     _draw_source_markers(axes[0], positions, result.cascade.sources, "#1B4332", "o")
-    axes[0].set_title("Observed cascade; green rings are true sources")
+    axes[0].set_title(
+        "Observed cascade; green rings are true sources"
+        + (f" ({graph.number_of_nodes()} nodes shown)" if graph is not result.graph else "")
+    )
 
     nx.draw_networkx_edges(graph, positions, ax=axes[1], alpha=0.2, width=0.8)
     collection = nx.draw_networkx_nodes(
@@ -65,10 +71,31 @@ def plot_demo_result(
     return figure
 
 
+def _visualization_graph(result: DemoResult, max_nodes: int) -> nx.Graph:
+    """Keep inference on the full graph but render only the cascade neighborhood."""
+    graph = result.graph
+    if graph.number_of_nodes() <= max_nodes:
+        return graph
+
+    core = (
+        set(result.observation.observed_infected)
+        | set(result.cascade.sources)
+        | set(result.prediction.sources)
+    )
+    expanded = set(core)
+    for node in sorted(core):
+        expanded.update(graph.neighbors(node))
+
+    selected = sorted(core)
+    selected.extend(node for node in sorted(expanded - core) if len(selected) < max_nodes)
+    return graph.subgraph(selected[:max_nodes]).copy()
+
+
 def _draw_source_markers(axis, positions, nodes, color, marker) -> None:
-    if not nodes:
+    visible_nodes = sorted(node for node in nodes if node in positions)
+    if not visible_nodes:
         return
-    coordinates = np.asarray([positions[node] for node in sorted(nodes)])
+    coordinates = np.asarray([positions[node] for node in visible_nodes])
     axis.scatter(
         coordinates[:, 0], coordinates[:, 1], s=300, facecolors="none",
         edgecolors=color, linewidths=2.2, marker=marker, zorder=4

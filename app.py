@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import streamlit as st
@@ -8,8 +9,8 @@ from diffusion_sources.demo import load_demo_graph, load_demo_model, run_demo
 from diffusion_sources.visualization import plot_demo_result
 
 
-DATA_DIR = Path("data/generated/pilot")
-RUN_DIR = Path("reports/runs/pilot")
+DATA_DIR = Path(os.environ.get("DIFFUSION_DATA_DIR", "data/generated/pilot"))
+RUN_DIR = Path(os.environ.get("DIFFUSION_RUN_DIR", "reports/runs/pilot"))
 
 
 @st.cache_resource

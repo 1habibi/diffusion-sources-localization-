@@ -1,0 +1,18 @@
+# Registry for model versions and their immutable output roots.
+# Generated checkpoints remain outside Git; paths are relative to the project root.
+versions:
+  v1_baseline:
+    status: completed
+    description: "Two-layer GCN with two node features; final Joint has lambda_consistency=0.0."
+    data: data/generated/facebook_main
+    imported_results: diffusion-sources/reports
+    diagnostics: reports/diagnostics/facebook_main_v1
+    series: reports/series/facebook_main
+
+  v2_improved:
+    status: planned
+    description: "New structural features, residual three-layer GCN and global-context source head."
+    data: data/generated/facebook_main
+    diagnostics: reports/diagnostics/facebook_main_v2
+    series: reports/series/facebook_main_v2
+    runs: reports/runs/facebook_main_v2
