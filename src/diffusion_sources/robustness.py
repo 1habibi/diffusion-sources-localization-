@@ -12,6 +12,7 @@ import matplotlib
 import networkx as nx
 import numpy as np
 import torch
+from tqdm.auto import tqdm
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -30,6 +31,7 @@ def build_condition_data(
     false_positive_fraction: float,
     rng: np.random.Generator,
     feature_indices: list[int],
+    edge_index: torch.Tensor | None = None,
 ):
     """Build one paired observation while always retaining true sources."""
     if not 0.0 < fraction <= 1.0:
@@ -68,7 +70,7 @@ def build_condition_data(
 
     return Data(
         x=torch.from_numpy(feature_matrix[:, feature_indices]).float(),
-        edge_index=graph_to_edge_index(graph),
+        edge_index=edge_index if edge_index is not None else graph_to_edge_index(graph),
         candidate_mask=torch.tensor(
             [node in candidates for node in graph], dtype=torch.bool
         ),
@@ -93,6 +95,7 @@ def evaluate_robustness(
     data_path, run_path, output_path = Path(data_dir), Path(run_dir), Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
     _, graph = load_graph_archive(data_path / "graph.npz")
+    edge_index = graph_to_edge_index(graph)
     archive = np.load(data_path / "test.npz", allow_pickle=False)
     if "infected_masks" not in archive:
         raise ValueError("Dataset must be regenerated with infected_masks.")
@@ -112,7 +115,13 @@ def evaluate_robustness(
     with torch.no_grad():
         for fraction in fractions:
             for noise in noise_levels:
-                for index in range(len(archive["source_counts"])):
+                iterator = tqdm(
+                    range(len(archive["source_counts"])),
+                    desc=f"observed={fraction:.0%}, noise={noise:.0%}",
+                    unit="cascade",
+                    leave=False,
+                )
+                for index in iterator:
                     data = build_condition_data(
                         graph,
                         archive["infected_masks"][index],
@@ -123,6 +132,7 @@ def evaluate_robustness(
                             seed + index + round(fraction * 1000) * 100 + round(noise * 1000)
                         ),
                         feature_indices,
+                        edge_index=edge_index,
                     )
                     source_logits, count_logits = model(data)
                     prediction = predict_joint(

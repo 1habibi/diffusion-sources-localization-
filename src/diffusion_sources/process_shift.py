@@ -12,6 +12,7 @@ import numpy as np
 import torch
 import yaml
 from torch_geometric.data import Data
+from tqdm.auto import tqdm
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -52,7 +53,11 @@ def evaluate_process_shift(
 
     rows = load_ic_rows(run_path / "test_predictions.csv")
     with torch.no_grad():
-        for index in range(len(archive["source_counts"])):
+        for index in tqdm(
+            range(len(archive["source_counts"])),
+            desc="SI evaluation",
+            unit="cascade",
+        ):
             sources = frozenset(np.flatnonzero(archive["source_labels"][index]).tolist())
             cascade = simulate_si(
                 graph,

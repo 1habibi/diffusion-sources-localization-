@@ -18,6 +18,7 @@ data/generated/
 # Model checkpoints and generated reports
 reports/
 *.pt
+diffusion-sources/
 
 # IDE and OS files
 .idea/

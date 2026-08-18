@@ -11,6 +11,7 @@ import matplotlib
 import numpy as np
 import torch
 import yaml
+from tqdm.auto import tqdm
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -50,7 +51,7 @@ def evaluate_transfer(
 
     rows = []
     with torch.no_grad():
-        for index, data in enumerate(examples):
+        for index, data in enumerate(tqdm(examples, desc="External graph", unit="cascade")):
             source_logits, count_logits = model(data)
             true_sources = frozenset(
                 torch.nonzero(data.source_labels, as_tuple=False).flatten().tolist()

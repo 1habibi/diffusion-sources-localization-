@@ -1,0 +1,13 @@
+seeds: [7026, 7027, 7028]
+runs_root: diffusion-sources/reports
+baselines: reports/baselines/facebook_main/baseline_metrics.json
+
+experiments:
+  joint_no_consistency:
+    directory: no_consistency
+    estimated_prediction: joint_estimated_k
+    oracle_prediction: joint_oracle_k
+  node_only:
+    directory: node_only
+    estimated_prediction: node_thresholded
+    oracle_prediction: node_oracle_k
