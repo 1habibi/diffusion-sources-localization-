@@ -1,0 +1,57 @@
+model_version: snapshot_v2
+experiment: s2_global_context
+ablation:
+  id: S2
+  parent: S1c_if_accepted
+  changed_factor: source_head_global_context
+  purpose: score_each_candidate_relative_to_the_whole_observed_cascade
+
+data:
+  directory: data/generated/facebook_main
+  distance_cache: data/cache/ego_facebook_shortest_paths.npz
+  distance_cap: 10
+  feature_names:
+    - observed_infected
+    - log_degree_normalized
+    - observed_neighbor_count_normalized
+    - observed_neighbor_fraction
+    - unobserved_neighbor_count_normalized
+    - unobserved_neighbor_fraction
+    - closed_neighborhood_observed_fraction
+    - mean_distance_to_observed_normalized
+    - max_distance_to_observed_normalized
+    - induced_observed_eccentricity_normalized
+    - observed_count_normalized
+    - observed_subgraph_density
+    - observed_component_count_normalized
+    - observed_largest_component_fraction
+
+model:
+  architecture: joint_global_context
+  backbone_mode: plain_2
+  source_head_mode: global_context
+  source_head_strategy: shared
+  global_feature_dim: 4
+  input_dim: 14
+  hidden_dim: 64
+  dropout: 0.2
+
+training:
+  seed: 7026
+  device: cuda
+  learning_rate: 0.001
+  batch_size: 3
+  resume: true
+  max_epochs: 100
+  patience: 10
+
+loss:
+  lambda_count: 1.0
+  lambda_consistency: 0.0
+  use_pos_weight: true
+
+evaluation:
+  selection_split: validation
+  evaluate_test: false
+  test_policy: locked_until_candidate_freeze
+  final_holdout_policy: sealed_until_final_freeze

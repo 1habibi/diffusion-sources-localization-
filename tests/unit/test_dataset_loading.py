@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import networkx as nx
 import pytest
+import torch
 
 from diffusion_sources.dataset import load_graph_archive, load_pyg_split
 from diffusion_sources.generation import generate_dataset
@@ -43,6 +44,30 @@ def test_load_generated_graph_and_split(tmp_path):
     )
     assert infected_only[0].x.shape == (34, 1)
 
+    structural = load_pyg_split(
+        tmp_path / "train.npz",
+        graph,
+        feature_names=[
+            "observed_infected",
+            "log_degree_normalized",
+            "observed_neighbor_fraction",
+        ],
+    )
+    assert structural[0].x.shape == (34, 3)
+    assert structural[0].x.isfinite().all()
+
+    with_global = load_pyg_split(
+        tmp_path / "train.npz",
+        graph,
+        feature_names=[
+            "observed_infected",
+            "observed_count_normalized",
+            "observed_subgraph_density",
+        ],
+    )
+    assert with_global[0].global_features.shape == (1, 2)
+    assert torch.equal(with_global[0].global_features, with_global[0].x[:1, 1:])
+
     limited = load_pyg_split(tmp_path / "train.npz", graph, limit=2)
     assert len(limited) == 2
 
@@ -53,3 +78,16 @@ def test_load_split_rejects_graph_with_wrong_node_count(tmp_path):
 
     with pytest.raises(ValueError, match="node count"):
         load_pyg_split(tmp_path / "train.npz", wrong_graph)
+
+
+def test_load_split_rejects_ambiguous_feature_selection(tmp_path):
+    generate_dataset(tiny_config(), tmp_path)
+    _, graph = load_graph_archive(tmp_path / "graph.npz")
+
+    with pytest.raises(ValueError, match="either feature_indices or feature_names"):
+        load_pyg_split(
+            tmp_path / "train.npz",
+            graph,
+            feature_indices=[0],
+            feature_names=["observed_infected"],
+        )

@@ -16,10 +16,12 @@ import torch
 import yaml
 
 from .dataset import load_graph_archive, load_pyg_split
+from .features import GLOBAL_SCALAR_FEATURE_NAMES, SnapshotFeatureBuilder
 from .inference import predict_joint, predict_oracle_k
-from .metrics import set_metrics, source_set_distances
+from .metrics import set_metrics, source_radius_hits, source_set_distances
 from .models import JointSourceCountGCN
 from .runtime import peak_memory_bytes, reset_peak_memory, runtime_metadata
+from .shortlist import evaluate_shortlist_grid
 from .training import evaluate_epoch, fit_joint_model, save_training_result
 
 
@@ -62,16 +64,39 @@ def run_training(config: dict[str, Any], output_dir: str | Path) -> dict[str, An
     output_path.mkdir(parents=True, exist_ok=True)
     data_dir = Path(config["data"]["directory"])
     graph_id, graph = load_graph_archive(data_dir / "graph.npz")
-    feature_indices = [int(value) for value in config["data"].get("feature_indices", [0, 1])]
+    configured_feature_names = config["data"].get("feature_names")
+    feature_names = (
+        [str(value) for value in configured_feature_names]
+        if configured_feature_names is not None
+        else None
+    )
+    feature_indices = (
+        None
+        if feature_names is not None
+        else [int(value) for value in config["data"].get("feature_indices", [0, 1])]
+    )
     split_limits = config["data"].get("split_limits", {})
+    feature_builder = (
+        SnapshotFeatureBuilder(
+            graph,
+            distance_cache_path=config["data"].get("distance_cache"),
+            distance_cap=int(config["data"].get("distance_cap", 10)),
+        )
+        if feature_names is not None
+        else None
+    )
+    evaluate_test = bool(config.get("evaluation", {}).get("evaluate_test", True))
+    split_names = ("train", "validation", "test") if evaluate_test else ("train", "validation")
     splits = {
         split: load_pyg_split(
             data_dir / f"{split}.npz",
             graph,
             feature_indices=feature_indices,
+            feature_names=feature_names,
+            feature_builder=feature_builder,
             limit=(int(split_limits[split]) if split in split_limits else None),
         )
-        for split in ("train", "validation", "test")
+        for split in split_names
     }
 
     seed = int(config["training"].get("seed", 0))
@@ -79,10 +104,38 @@ def run_training(config: dict[str, Any], output_dir: str | Path) -> dict[str, An
     device = torch.device(config["training"].get("device", "cpu"))
     if device.type == "cuda" and not torch.cuda.is_available():
         raise RuntimeError("CUDA was requested but is not available.")
+    input_dim = len(feature_names) if feature_names is not None else len(feature_indices)
+    configured_input_dim = int(config["model"].get("input_dim", input_dim))
+    if configured_input_dim != input_dim:
+        raise ValueError("model.input_dim must match the selected data features.")
+    source_head_mode = str(config["model"].get("source_head_mode", "local"))
+    backbone_mode = str(config["model"].get("backbone_mode", "plain_2"))
+    source_head_strategy = str(
+        config["model"].get("source_head_strategy", "shared")
+    )
+    shortlist_mode = str(config["model"].get("shortlist_mode", "disabled"))
+    selected_global_features = [
+        name for name in (feature_names or []) if name in GLOBAL_SCALAR_FEATURE_NAMES
+    ]
+    configured_global_feature_dim = int(
+        config["model"].get("global_feature_dim", 0)
+    )
+    expected_global_feature_dim = (
+        len(selected_global_features) if source_head_mode == "global_context" else 0
+    )
+    if configured_global_feature_dim != expected_global_feature_dim:
+        raise ValueError(
+            "model.global_feature_dim must match selected global scalar features."
+        )
     model = JointSourceCountGCN(
-        input_dim=int(config["model"].get("input_dim", 2)),
+        input_dim=input_dim,
         hidden_dim=int(config["model"].get("hidden_dim", 64)),
         dropout=float(config["model"].get("dropout", 0.2)),
+        source_head_mode=source_head_mode,
+        global_feature_dim=configured_global_feature_dim,
+        backbone_mode=backbone_mode,
+        source_head_strategy=source_head_strategy,
+        shortlist_mode=shortlist_mode,
     ).to(device)
     optimizer = torch.optim.Adam(
         model.parameters(), lr=float(config["training"].get("learning_rate", 1e-3))
@@ -94,6 +147,22 @@ def run_training(config: dict[str, Any], output_dir: str | Path) -> dict[str, An
     )
     lambda_count = float(config["loss"].get("lambda_count", 1.0))
     lambda_consistency = float(config["loss"].get("lambda_consistency", 0.1))
+    lambda_rank = float(config["loss"].get("lambda_rank", 0.0))
+    rank_negatives_per_positive = int(
+        config["loss"].get("rank_negatives_per_positive", 8)
+    )
+    rank_hard_negative_fraction = float(
+        config["loss"].get("rank_hard_negative_fraction", 0.5)
+    )
+    lambda_preliminary = float(
+        config["loss"].get("lambda_preliminary", 0.0)
+    )
+    shortlist_config = config.get("shortlist", {})
+    shortlist_enabled = bool(shortlist_config.get("enabled", False))
+    if shortlist_enabled and shortlist_mode != "preliminary":
+        raise ValueError(
+            "shortlist.enabled requires model.shortlist_mode=preliminary."
+        )
     batch_size = int(config["training"].get("batch_size", 1))
     checkpoint_path = output_path / "last_checkpoint.pt"
     resume_from = (
@@ -113,6 +182,10 @@ def run_training(config: dict[str, Any], output_dir: str | Path) -> dict[str, An
         patience=int(config["training"].get("patience", 10)),
         lambda_count=lambda_count,
         lambda_consistency=lambda_consistency,
+        lambda_rank=lambda_rank,
+        rank_negatives_per_positive=rank_negatives_per_positive,
+        rank_hard_negative_fraction=rank_hard_negative_fraction,
+        lambda_preliminary=lambda_preliminary,
         pos_weight=pos_weight,
         batch_size=batch_size,
         checkpoint_path=checkpoint_path,
@@ -130,20 +203,66 @@ def run_training(config: dict[str, Any], output_dir: str | Path) -> dict[str, An
                 learning_rate=learning_rate,
                 lambda_count=lambda_count,
                 lambda_consistency=lambda_consistency,
+                lambda_rank=lambda_rank,
+                rank_negatives_per_positive=rank_negatives_per_positive,
+                rank_hard_negative_fraction=rank_hard_negative_fraction,
+                lambda_preliminary=lambda_preliminary,
                 pos_weight=pos_weight,
                 batch_size=batch_size,
             )
         )
         for split, examples in splits.items()
     }
-    prediction_rows, prediction_metrics = evaluate_test_predictions(
-        model, splits["test"], graph
+    validation_rows, validation_prediction_metrics = evaluate_test_predictions(
+        model, splits["validation"], graph
     )
-    _write_prediction_rows(output_path / "test_predictions.csv", prediction_rows)
+    _write_prediction_rows(
+        output_path / "validation_predictions.csv", validation_rows
+    )
+    prediction_metrics = None
+    if evaluate_test:
+        prediction_rows, prediction_metrics = evaluate_test_predictions(
+            model, splits["test"], graph
+        )
+        _write_prediction_rows(output_path / "test_predictions.csv", prediction_rows)
+    shortlist_validation = None
+    if shortlist_enabled:
+        shortlist_validation = evaluate_shortlist_grid(
+            model,
+            splits["validation"],
+            shortlist_config.get("sizes", [8, 12, 16, 24, 32]),
+            bootstrap_repeats=int(
+                shortlist_config.get("bootstrap_repeats", 2000)
+            ),
+            bootstrap_seed=int(shortlist_config.get("bootstrap_seed", 17026)),
+            micro_recall_min=float(
+                shortlist_config.get("micro_candidate_recall_min", 0.95)
+            ),
+            per_k_recall_min=float(
+                shortlist_config.get("per_k_candidate_recall_min", 0.95)
+            ),
+            bootstrap_ci_low_min=float(
+                shortlist_config.get("bootstrap_ci_low_min", 0.93)
+            ),
+            require_f1_or_latency_improvement=bool(
+                shortlist_config.get(
+                    "require_f1_or_latency_improvement", True
+                )
+            ),
+        )
+        (output_path / "shortlist_validation.json").write_text(
+            json.dumps(shortlist_validation, indent=2), encoding="utf-8"
+        )
     summary = {
         "graph_id": graph_id,
         "feature_indices": feature_indices,
+        "feature_names": feature_names,
         "model": "joint_source_count",
+        "source_head_mode": source_head_mode,
+        "source_head_strategy": source_head_strategy,
+        "shortlist_mode": shortlist_mode,
+        "backbone_mode": backbone_mode,
+        "global_feature_names": selected_global_features,
         "experiment": str(config.get("experiment", "joint_full")),
         "seed": seed,
         "device": str(device),
@@ -155,11 +274,18 @@ def run_training(config: dict[str, Any], output_dir: str | Path) -> dict[str, An
         "pos_weight": float(pos_weight.item()) if pos_weight is not None else None,
         "lambda_count": lambda_count,
         "lambda_consistency": lambda_consistency,
+        "lambda_rank": lambda_rank,
+        "rank_negatives_per_positive": rank_negatives_per_positive,
+        "rank_hard_negative_fraction": rank_hard_negative_fraction,
+        "lambda_preliminary": lambda_preliminary,
         "batch_size": batch_size,
         "resumed": resume_from is not None,
         "peak_memory_bytes": peak_memory_bytes(device),
         "metrics": metrics,
+        "validation_prediction_metrics": validation_prediction_metrics,
         "prediction_metrics": prediction_metrics,
+        "shortlist_validation": shortlist_validation,
+        "test_evaluated": evaluate_test,
         "split_sizes": {split: len(examples) for split, examples in splits.items()},
         "runtime": runtime_metadata(device),
     }
@@ -201,6 +327,7 @@ def evaluate_test_predictions(model, examples: list, graph) -> tuple[list[dict],
                     "method": method,
                     **set_metrics(true_sources, prediction.sources),
                     **source_set_distances(graph, true_sources, prediction.sources),
+                    **source_radius_hits(graph, true_sources, prediction.sources),
                 }
             )
     return rows, _aggregate_prediction_rows(rows)
@@ -227,6 +354,8 @@ def _aggregate_prediction_rows(rows: list[dict]) -> dict:
                     "count_accuracy",
                     "count_mae",
                     "symmetric_set_distance",
+                    "hit_at_1_hop",
+                    "hit_at_2_hop",
                 )
             }
     return result

@@ -84,6 +84,54 @@ def test_joint_training_supports_multi_graph_batch():
     assert 0.0 <= metrics.macro_f1 <= 1.0
 
 
+def test_joint_training_reports_ranking_loss_when_enabled():
+    model = JointSourceCountGCN(hidden_dim=8, dropout=0.0)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+
+    train_one_epoch(
+        model,
+        [model_data(), model_data()],
+        optimizer,
+        batch_size=2,
+        lambda_rank=0.2,
+        rank_negatives_per_positive=1,
+        rank_hard_negative_fraction=1.0,
+    )
+    metrics = evaluate_epoch(
+        model,
+        [model_data(), model_data()],
+        batch_size=2,
+        lambda_rank=0.2,
+        rank_negatives_per_positive=1,
+        rank_hard_negative_fraction=1.0,
+    )
+
+    assert metrics.ranking_loss > 0.0
+
+
+def test_joint_training_reports_preliminary_loss_when_enabled():
+    model = JointSourceCountGCN(
+        hidden_dim=8, dropout=0.0, shortlist_mode="preliminary"
+    )
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+
+    train_one_epoch(
+        model,
+        [model_data(), model_data()],
+        optimizer,
+        batch_size=2,
+        lambda_preliminary=1.0,
+    )
+    metrics = evaluate_epoch(
+        model,
+        [model_data(), model_data()],
+        batch_size=2,
+        lambda_preliminary=1.0,
+    )
+
+    assert metrics.preliminary_loss > 0.0
+
+
 def test_node_training_supports_multi_graph_batch():
     model = NodeOnlyGCN(hidden_dim=8, dropout=0.0)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.01)

@@ -1,3 +1,4 @@
+model_version: v1_baseline
 seeds: [7026, 7027, 7028]
 
 experiments:

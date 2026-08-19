@@ -13,7 +13,7 @@ import numpy as np
 
 from .baselines import degree_candidates, multi_jordan, uniform_candidates
 from .dataset import load_graph_archive
-from .metrics import set_metrics, source_set_distances
+from .metrics import set_metrics, source_radius_hits, source_set_distances
 
 
 def evaluate_baselines(
@@ -97,6 +97,7 @@ def _evaluation_row(index, source_count, method, true_sources, prediction, graph
         "method": method,
         **set_metrics(true_sources, prediction),
         **source_set_distances(graph, true_sources, prediction),
+        **source_radius_hits(graph, true_sources, prediction),
     }
 
 
@@ -119,6 +120,8 @@ def _aggregate_rows(rows: list[dict]) -> dict[str, dict]:
         "f1",
         "exact_set_accuracy",
         "symmetric_set_distance",
+        "hit_at_1_hop",
+        "hit_at_2_hop",
     ]
     for (method, group), group_rows in grouped.items():
         result[method][str(group)] = {

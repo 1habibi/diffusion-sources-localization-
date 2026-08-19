@@ -9,10 +9,25 @@ versions:
     diagnostics: reports/diagnostics/facebook_main_v1
     series: reports/series/facebook_main
 
-  v2_improved:
-    status: planned
-    description: "New structural features, residual three-layer GCN and global-context source head."
+  snapshot_v2:
+    status: gpu_ablation_ready
+    implemented_through: S7_local_smoke
+    description: "Single-snapshot v2 selected through isolated structural, context, residual, specialized-head, ranking, Jordan and shortlist ablations."
     data: data/generated/facebook_main
     diagnostics: reports/diagnostics/facebook_main_v2
     series: reports/series/facebook_main_v2
     runs: reports/runs/facebook_main_v2
+    final_holdout: data/generated/facebook_snapshot_final_holdout
+    final_holdout_manifest: configs/holdouts/facebook_snapshot_final_holdout_manifest.json
+    selection_split: validation
+    confirmatory_split: snapshot_final_holdout
+
+  temporal_v2:
+    status: planned_after_snapshot_v2
+    description: "Separate 2-3-snapshot task with leakage-safe temporal splits; not directly comparable to the original snapshot test."
+    data: data/generated/facebook_temporal_v2
+    series: reports/series/facebook_temporal_v2
+    runs: reports/runs/facebook_temporal_v2
+    final_holdout: reports/holdout/facebook_temporal_v2
+    selection_split: validation
+    confirmatory_split: temporal_final_holdout

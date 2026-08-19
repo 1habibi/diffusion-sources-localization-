@@ -18,7 +18,7 @@ import matplotlib.pyplot as plt
 
 from .dataset import load_graph_archive, load_pyg_split
 from .inference import predict_joint, predict_oracle_k
-from .metrics import set_metrics, source_set_distances
+from .metrics import set_metrics, source_radius_hits, source_set_distances
 from .models import JointSourceCountGCN
 from .train_cli import _aggregate_prediction_rows
 
@@ -74,6 +74,7 @@ def evaluate_transfer(
                         "method": method,
                         **set_metrics(true_sources, prediction.sources),
                         **source_set_distances(graph, true_sources, prediction.sources),
+                        **source_radius_hits(graph, true_sources, prediction.sources),
                     }
                 )
 

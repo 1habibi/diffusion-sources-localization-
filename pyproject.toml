@@ -13,6 +13,7 @@ dependencies = [
     "matplotlib>=3.10",
     "PyYAML>=6.0",
     "scikit-learn>=1.7",
+    "scipy>=1.11",
     "streamlit>=1.49",
     "torch>=2.13",
     "torch-geometric>=2.8",

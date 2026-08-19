@@ -33,6 +33,19 @@ class EpochMetrics:
     count_mae: float
     duration_seconds: float
     learning_rate: float
+    ranking_loss: float = 0.0
+    preliminary_loss: float = 0.0
+
+
+def _joint_model_outputs(
+    model: torch.nn.Module, data
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor | None]:
+    """Get optional preliminary logits without changing legacy forward APIs."""
+    forward_all = getattr(model, "forward_all", None)
+    if forward_all is not None:
+        return forward_all(data)
+    source_logits, count_logits = model(data)
+    return source_logits, count_logits, None
 
 
 @dataclass(frozen=True)
@@ -122,6 +135,10 @@ def train_one_epoch(
     *,
     lambda_count: float = 1.0,
     lambda_consistency: float = 0.1,
+    lambda_rank: float = 0.0,
+    rank_negatives_per_positive: int = 8,
+    rank_hard_negative_fraction: float = 0.5,
+    lambda_preliminary: float = 0.0,
     pos_weight: torch.Tensor | None = None,
     batch_size: int = 1,
     progress_description: str | None = None,
@@ -134,7 +151,9 @@ def train_one_epoch(
     for data in tqdm(loader, desc=progress_description, leave=False, disable=progress_description is None):
         data = data.to(next(model.parameters()).device)
         optimizer.zero_grad()
-        source_logits, count_logits = model(data)
+        source_logits, count_logits, preliminary_logits = _joint_model_outputs(
+            model, data
+        )
         loss = joint_source_count_loss(
             source_logits,
             count_logits,
@@ -144,6 +163,12 @@ def train_one_epoch(
             getattr(data, "batch", None),
             lambda_count=lambda_count,
             lambda_consistency=lambda_consistency,
+            lambda_rank=lambda_rank,
+            rank_negatives_per_positive=rank_negatives_per_positive,
+            rank_hard_negative_fraction=rank_hard_negative_fraction,
+            rank_random_sampling=True,
+            preliminary_logits=preliminary_logits,
+            lambda_preliminary=lambda_preliminary,
             pos_weight=pos_weight,
         )
         loss.total.backward()
@@ -183,6 +208,10 @@ def evaluate_epoch(
     learning_rate: float = 0.0,
     lambda_count: float = 1.0,
     lambda_consistency: float = 0.1,
+    lambda_rank: float = 0.0,
+    rank_negatives_per_positive: int = 8,
+    rank_hard_negative_fraction: float = 0.5,
+    lambda_preliminary: float = 0.0,
     pos_weight: torch.Tensor | None = None,
     batch_size: int = 1,
     progress_description: str | None = None,
@@ -192,7 +221,7 @@ def evaluate_epoch(
         raise ValueError("batch_size must be positive.")
     started_at = time.perf_counter()
     model.eval()
-    losses: list[tuple[float, float, float, float]] = []
+    losses: list[tuple[float, float, float, float, float, float]] = []
     f1_scores: list[float] = []
     count_matches: list[float] = []
     count_errors: list[float] = []
@@ -202,7 +231,9 @@ def evaluate_epoch(
     loader = DataLoader(tuple(examples), batch_size=batch_size, shuffle=False)
     for data in tqdm(loader, desc=progress_description, leave=False, disable=progress_description is None):
         data = data.to(next(model.parameters()).device)
-        source_logits, count_logits = model(data)
+        source_logits, count_logits, preliminary_logits = _joint_model_outputs(
+            model, data
+        )
         loss = joint_source_count_loss(
             source_logits,
             count_logits,
@@ -212,6 +243,12 @@ def evaluate_epoch(
             getattr(data, "batch", None),
             lambda_count=lambda_count,
             lambda_consistency=lambda_consistency,
+            lambda_rank=lambda_rank,
+            rank_negatives_per_positive=rank_negatives_per_positive,
+            rank_hard_negative_fraction=rank_hard_negative_fraction,
+            rank_random_sampling=False,
+            preliminary_logits=preliminary_logits,
+            lambda_preliminary=lambda_preliminary,
             pos_weight=pos_weight,
         )
         losses.append(
@@ -220,6 +257,8 @@ def evaluate_epoch(
                 loss.source.item(),
                 loss.count.item(),
                 loss.consistency.item(),
+                loss.ranking.item(),
+                loss.preliminary.item(),
             )
         )
         ptr = data.ptr if hasattr(data, "ptr") else torch.tensor([0, data.num_nodes])
@@ -240,9 +279,11 @@ def evaluate_epoch(
             true_count = int(data.source_count[graph_index].item())
             count_matches.append(float(prediction.source_count == true_count))
             count_errors.append(float(abs(prediction.source_count - true_count)))
-        mask = data.candidate_mask.bool()
-        labels_for_ap.extend(data.source_labels[mask].cpu().tolist())
-        scores_for_ap.extend(torch.sigmoid(source_logits[mask]).cpu().tolist())
+            graph_mask = data.candidate_mask[start:end].bool()
+            labels_for_ap.extend(
+                data.source_labels[start:end][graph_mask].cpu().tolist()
+            )
+            scores_for_ap.extend(prediction.scores[graph_mask].cpu().tolist())
 
     if not losses:
         raise ValueError("At least one example is required for evaluation.")
@@ -263,6 +304,8 @@ def evaluate_epoch(
         count_mae=float(np.mean(count_errors)),
         duration_seconds=time.perf_counter() - started_at,
         learning_rate=learning_rate,
+        ranking_loss=float(loss_array[:, 4].mean()),
+        preliminary_loss=float(loss_array[:, 5].mean()),
     )
 
 
@@ -337,6 +380,10 @@ def fit_joint_model(
     patience: int = 10,
     lambda_count: float = 1.0,
     lambda_consistency: float = 0.1,
+    lambda_rank: float = 0.0,
+    rank_negatives_per_positive: int = 8,
+    rank_hard_negative_fraction: float = 0.5,
+    lambda_preliminary: float = 0.0,
     pos_weight: torch.Tensor | None = None,
     batch_size: int = 1,
     checkpoint_path: str | Path | None = None,
@@ -370,6 +417,10 @@ def fit_joint_model(
             optimizer,
             lambda_count=lambda_count,
             lambda_consistency=lambda_consistency,
+            lambda_rank=lambda_rank,
+            rank_negatives_per_positive=rank_negatives_per_positive,
+            rank_hard_negative_fraction=rank_hard_negative_fraction,
+            lambda_preliminary=lambda_preliminary,
             pos_weight=pos_weight,
             batch_size=batch_size,
             progress_description=f"Epoch {epoch}/{max_epochs} train",
@@ -381,6 +432,10 @@ def fit_joint_model(
             learning_rate=learning_rate,
             lambda_count=lambda_count,
             lambda_consistency=lambda_consistency,
+            lambda_rank=lambda_rank,
+            rank_negatives_per_positive=rank_negatives_per_positive,
+            rank_hard_negative_fraction=rank_hard_negative_fraction,
+            lambda_preliminary=lambda_preliminary,
             pos_weight=pos_weight,
             batch_size=batch_size,
             progress_description=f"Epoch {epoch}/{max_epochs} train eval",
@@ -391,6 +446,10 @@ def fit_joint_model(
             learning_rate=learning_rate,
             lambda_count=lambda_count,
             lambda_consistency=lambda_consistency,
+            lambda_rank=lambda_rank,
+            rank_negatives_per_positive=rank_negatives_per_positive,
+            rank_hard_negative_fraction=rank_hard_negative_fraction,
+            lambda_preliminary=lambda_preliminary,
             pos_weight=pos_weight,
             batch_size=batch_size,
             progress_description=f"Epoch {epoch}/{max_epochs} validation",

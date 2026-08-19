@@ -13,7 +13,7 @@ import yaml
 from .dataset import build_example, example_to_pyg, load_graph_archive
 from .diffusion import Cascade, simulate_ic
 from .inference import SourcePrediction, predict_joint
-from .metrics import set_metrics, source_set_distances
+from .metrics import set_metrics, source_radius_hits, source_set_distances
 from .models import JointSourceCountGCN
 from .observations import Observation, observe_cascade
 
@@ -86,6 +86,7 @@ def run_demo(
     metrics = {
         **set_metrics(cascade.sources, prediction.sources),
         **source_set_distances(graph, cascade.sources, prediction.sources),
+        **source_radius_hits(graph, cascade.sources, prediction.sources),
     }
     return DemoResult(graph, cascade, observation, prediction, metrics)
 

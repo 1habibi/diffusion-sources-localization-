@@ -1,4 +1,8 @@
-# Обучение основных моделей в Google Colab
+# v1 baseline — обучение основных моделей в Google Colab
+
+Этот документ и `notebooks/colab_training.ipynb` относятся к завершенной неизменяемой версии `v1_baseline`. Для `snapshot-v2` создан отдельный `notebooks/colab_training_snapshot_v2.ipynb`; существующий сценарий не удаляется и не переиспользуется для записи новых результатов.
+
+Notebook `snapshot-v2` выполняет GPU smoke, последовательные S0-S7 от фактического validation-победителя, ограниченную S5-сетку, S7 safety gates, leave-one-component-out проверки, freeze manifest и финальные training seeds. Он принудительно сохраняет `evaluate_test: false`; существующий test и запечатанный final holdout открываются позже отдельной процедурой после переноса и аудита всех validation-решений.
 
 Основная логика остается в репозитории. Colab используется только как GPU-исполнитель, Google Drive хранит датасет и результаты.
 

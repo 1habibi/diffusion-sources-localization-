@@ -69,4 +69,29 @@ def test_train_model_cli_saves_report_artifacts(tmp_path):
     assert (output_dir / "history.csv").exists()
     assert (output_dir / "history.json").exists()
     assert (output_dir / "best_model.pt").exists()
+    assert (output_dir / "validation_predictions.csv").exists()
     assert (output_dir / "test_predictions.csv").exists()
+
+    locked_output_dir = tmp_path / "locked_run"
+    training_config["evaluation"] = {"evaluate_test": False}
+    config_path.write_text(
+        yaml.safe_dump(training_config, sort_keys=False), encoding="utf-8"
+    )
+    locked_result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/train_model.py",
+            "--config",
+            str(config_path),
+            "--output",
+            str(locked_output_dir),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert locked_result.returncode == 0, locked_result.stderr
+    assert (locked_output_dir / "metrics.json").exists()
+    assert (locked_output_dir / "validation_predictions.csv").exists()
+    assert not (locked_output_dir / "test_predictions.csv").exists()

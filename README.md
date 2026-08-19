@@ -114,7 +114,7 @@ Workflow последовательно выполняет генерацию д
 
 ## Google Colab
 
-Основные Facebook-эксперименты выполняются на GPU через `notebooks/colab_training.ipynb`. Подробная инструкция, структура Drive и правила resume описаны в `docs/colab_training.md`.
+Завершенные Facebook-эксперименты `v1_baseline` выполнялись на GPU через `notebooks/colab_training.ipynb`. Для последовательных validation-only абляций `snapshot-v2` создан отдельный `notebooks/colab_training_snapshot_v2.ipynb`; он не заменяет и не перезаписывает сценарий `v1`. Подробная инструкция, структура Drive и правила resume описаны в `docs/colab_training.md`. Все существующие training-конфигурации вне `configs/snapshot_v2/` считаются конфигурациями `v1` или его пилотов, если явно не указано иное.
 
 ## Основные артефакты
 

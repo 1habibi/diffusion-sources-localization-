@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "version": "snapshot-v2",
+  "role": "confirmatory_final_holdout",
+  "evaluation_status": "sealed_unopened",
+  "split": "final_holdout",
+  "example_count": 1998,
+  "dataset_seed": 3007026,
+  "reference_dataset": "data/generated/facebook_main",
+  "seed_isolation": {
+    "disjoint_from_reference": true,
+    "simulation_seeds_sha256": "342441369d4aa53a3e8c315eb2bf34b47b8e227ffdd8d123767cddf7b3ed1405",
+    "observation_seeds_sha256": "3354e0e696e62a6e352ee78c2c017e53c4fd89323f384163b2a7ad2ad3a0b5e4"
+  },
+  "policy": {
+    "target_aggregates_computed": false,
+    "allowed_before_freeze": ["file_integrity", "schema", "seed_isolation"],
+    "forbidden_before_freeze": [
+      "target_metrics",
+      "feature_normalization",
+      "hyperparameter_tuning",
+      "checkpoint_selection"
+    ]
+  },
+  "artifacts": {
+    "graph.npz": {
+      "bytes": 226965,
+      "sha256": "5094d773d06e1a17d14ebc73d734f420106819ac740433f6d006be564d173658"
+    },
+    "final_holdout.npz": {
+      "bytes": 5272278,
+      "sha256": "fbcde3de2d11878b8eebc326e91d9b0b18a349a362e41da74ca159d0fa03569d"
+    },
+    "config.yaml": {
+      "bytes": 515,
+      "sha256": "094f33e76e2596d4dbb4ef96687bdc0c01b7b22b962a551e5a95b84271df68c6"
+    },
+    "generation_summary.json": {
+      "bytes": 481,
+      "sha256": "bbe2acfaaa8867606d72f24329cdeda3e805b190d23471e69b598e24d0fc6342"
+    }
+  }
+}

@@ -1,0 +1,28 @@
+# snapshot-v2 confirmatory holdout. Generate and seal before model development.
+# Do not use this split for normalization, tuning, early stopping or checkpoint selection.
+graph:
+  id: ego_facebook
+  kind: edge_list
+  path: data/raw/facebook_combined.txt.gz
+
+simulation:
+  source_counts: [1, 2, 3]
+  probabilities: [0.01, 0.02, 0.03]
+  max_steps: 3
+  distance_ranges:
+    - {min: 1, max: 2}
+    - {min: 3, max: 5}
+
+observation:
+  fractions: [1.0, 0.75, 0.5]
+  false_positive_count: 0
+
+dataset:
+  seed: 3007026
+  splits:
+    final_holdout: 1998
+  min_candidates: 5
+  max_infected_fraction: 0.5
+  max_attempt_factor: 100
+  distance_cache_size: 512
+  show_progress: true

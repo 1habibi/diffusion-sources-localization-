@@ -1,0 +1,76 @@
+model_version: snapshot_v2
+experiment: s7_safe_shortlist
+ablation:
+  id: S7
+  parent: S6_if_accepted
+  changed_factor: detached_preliminary_head_and_safe_shortlist
+  control: same_checkpoint_full_candidate_scoring
+  purpose: reduce_expensive_ranking_candidates_without_sacrificing_source_recall
+
+data:
+  directory: data/generated/facebook_main
+  distance_cache: data/cache/ego_facebook_shortest_paths.npz
+  distance_cap: 10
+  feature_names:
+    - observed_infected
+    - log_degree_normalized
+    - observed_neighbor_count_normalized
+    - observed_neighbor_fraction
+    - unobserved_neighbor_count_normalized
+    - unobserved_neighbor_fraction
+    - closed_neighborhood_observed_fraction
+    - mean_distance_to_observed_normalized
+    - max_distance_to_observed_normalized
+    - induced_observed_eccentricity_normalized
+    - observed_count_normalized
+    - observed_subgraph_density
+    - observed_component_count_normalized
+    - observed_largest_component_fraction
+    - multi_jordan_rank_normalized
+
+model:
+  architecture: joint_global_context_residual_specialized
+  backbone_mode: residual_3
+  source_head_mode: global_context
+  source_head_strategy: specialized_k
+  shortlist_mode: preliminary
+  global_feature_dim: 4
+  input_dim: 15
+  hidden_dim: 64
+  dropout: 0.2
+
+training:
+  seed: 7026
+  device: cuda
+  learning_rate: 0.001
+  batch_size: 3
+  resume: true
+  max_epochs: 100
+  patience: 10
+
+loss:
+  lambda_count: 1.0
+  lambda_consistency: 0.0
+  lambda_rank: 0.2
+  rank_negatives_per_positive: 8
+  rank_hard_negative_fraction: 0.5
+  lambda_preliminary: 1.0
+  use_pos_weight: true
+
+shortlist:
+  enabled: true
+  sizes: [8, 12, 16, 24, 32]
+  bootstrap_repeats: 2000
+  bootstrap_seed: 17026
+  selection_split: validation
+  micro_candidate_recall_min: 0.95
+  per_k_candidate_recall_min: 0.95
+  bootstrap_ci_low_min: 0.93
+  require_f1_or_latency_improvement: true
+  fallback: full_candidate_scoring
+
+evaluation:
+  selection_split: validation
+  evaluate_test: false
+  test_policy: locked_until_candidate_freeze
+  final_holdout_policy: sealed_until_final_freeze

@@ -57,3 +57,47 @@ def source_set_distances(
         "set_to_source_distance": set_to_source,
         "symmetric_set_distance": (source_to_set + set_to_source) / 2,
     }
+
+
+def source_radius_hits(
+    graph: nx.Graph,
+    true_sources: Iterable[int],
+    predicted_sources: Iterable[int],
+    *,
+    radii: Iterable[int] = (1, 2),
+) -> dict[str, float]:
+    """Return true-source coverage within each graph-distance radius.
+
+    For every true source, the nearest predicted source is considered a hit when
+    its shortest-path distance is at most the requested radius. Results are
+    averaged over true sources, matching the per-cascade Hit@r-hop definition.
+    """
+    true_set = set(true_sources)
+    predicted_set = set(predicted_sources)
+    requested_radii = tuple(int(radius) for radius in radii)
+    if not true_set:
+        raise ValueError("true_sources must not be empty.")
+    if not predicted_set:
+        raise ValueError("predicted_sources must not be empty.")
+    if not requested_radii or any(radius < 0 for radius in requested_radii):
+        raise ValueError("radii must contain non-negative integers.")
+    if len(set(requested_radii)) != len(requested_radii):
+        raise ValueError("radii must not contain duplicates.")
+
+    max_radius = max(requested_radii)
+    hit_counts = {radius: 0 for radius in requested_radii}
+    for source in true_set:
+        distances = nx.single_source_shortest_path_length(
+            graph, source, cutoff=max_radius
+        )
+        nearest = min(
+            (distances[node] for node in predicted_set if node in distances),
+            default=max_radius + 1,
+        )
+        for radius in requested_radii:
+            hit_counts[radius] += int(nearest <= radius)
+
+    return {
+        f"hit_at_{radius}_hop": hit_counts[radius] / len(true_set)
+        for radius in requested_radii
+    }

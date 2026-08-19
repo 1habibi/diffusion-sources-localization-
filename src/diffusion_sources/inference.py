@@ -19,6 +19,7 @@ def predict_oracle_k(
     source_logits: torch.Tensor, candidate_mask: torch.Tensor, source_count: int
 ) -> SourcePrediction:
     """Select the highest-scoring candidates when true cardinality is known."""
+    source_logits = _source_logits_for_count(source_logits, source_count)
     scores = torch.sigmoid(source_logits.detach())
     candidates = torch.nonzero(candidate_mask.bool(), as_tuple=False).flatten()
     if not 1 <= source_count <= len(candidates):
@@ -41,13 +42,29 @@ def predict_joint(
     if available_candidates == 0:
         raise ValueError("candidate_mask must contain at least one node.")
     selected_count = min(source_count, available_candidates)
-    oracle_prediction = predict_oracle_k(source_logits, candidate_mask, selected_count)
+    selected_logits = _source_logits_for_count(source_logits, source_count)
+    oracle_prediction = predict_oracle_k(
+        selected_logits, candidate_mask, selected_count
+    )
     return SourcePrediction(
         scores=oracle_prediction.scores,
         source_count=source_count,
         sources=oracle_prediction.sources,
         count_probabilities=probabilities,
     )
+
+
+def _source_logits_for_count(
+    source_logits: torch.Tensor, source_count: int
+) -> torch.Tensor:
+    """Select a specialized k column while accepting legacy shared logits."""
+    if source_logits.ndim == 1:
+        return source_logits
+    if source_logits.ndim != 2 or source_logits.size(1) != 3:
+        raise ValueError("source_logits must have shape [nodes] or [nodes, 3].")
+    if not 1 <= source_count <= 3:
+        raise ValueError("source_count must be in 1..3 for specialized heads.")
+    return source_logits[:, source_count - 1]
 
 
 def predict_thresholded(

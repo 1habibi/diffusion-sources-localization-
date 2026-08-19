@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt
 
 from .dataset import graph_to_edge_index, load_graph_archive
 from .inference import predict_joint
-from .metrics import set_metrics, source_set_distances
+from .metrics import set_metrics, source_radius_hits, source_set_distances
 from .models import JointSourceCountGCN
 
 
@@ -147,6 +147,7 @@ def evaluate_robustness(
                             "k": int(archive["source_counts"][index]),
                             **set_metrics(true_sources, prediction.sources),
                             **source_set_distances(graph, true_sources, prediction.sources),
+                            **source_radius_hits(graph, true_sources, prediction.sources),
                         }
                     )
     aggregates = _aggregate(rows)
@@ -176,6 +177,8 @@ def _aggregate(rows: list[dict]) -> dict[str, dict]:
             "symmetric_set_distance": float(
                 np.mean([row["symmetric_set_distance"] for row in selected])
             ),
+            "hit_at_1_hop": float(np.mean([row["hit_at_1_hop"] for row in selected])),
+            "hit_at_2_hop": float(np.mean([row["hit_at_2_hop"] for row in selected])),
         }
         for (fraction, noise), selected in grouped.items()
     }

@@ -1,0 +1,56 @@
+model_version: snapshot_v2
+experiment: s1c_global_scalars_smoke
+ablation:
+  id: S1c-smoke
+  parent: S1b-smoke
+  changed_factor: global_scalar_features
+  purpose: local_pipeline_verification_only
+
+data:
+  directory: data/generated/facebook_main
+  distance_cache: data/cache/ego_facebook_shortest_paths.npz
+  distance_cap: 10
+  feature_names:
+    - observed_infected
+    - log_degree_normalized
+    - observed_neighbor_count_normalized
+    - observed_neighbor_fraction
+    - unobserved_neighbor_count_normalized
+    - unobserved_neighbor_fraction
+    - closed_neighborhood_observed_fraction
+    - mean_distance_to_observed_normalized
+    - max_distance_to_observed_normalized
+    - induced_observed_eccentricity_normalized
+    - observed_count_normalized
+    - observed_subgraph_density
+    - observed_component_count_normalized
+    - observed_largest_component_fraction
+  split_limits:
+    train: 18
+    validation: 9
+
+model:
+  architecture: v1_joint
+  input_dim: 14
+  hidden_dim: 16
+  dropout: 0.0
+
+training:
+  seed: 7026
+  device: cpu
+  learning_rate: 0.001
+  batch_size: 3
+  resume: false
+  max_epochs: 1
+  patience: 1
+
+loss:
+  lambda_count: 1.0
+  lambda_consistency: 0.0
+  use_pos_weight: true
+
+evaluation:
+  selection_split: validation
+  evaluate_test: false
+  test_policy: locked_until_candidate_freeze
+  final_holdout_policy: sealed_until_final_freeze

@@ -1,0 +1,37 @@
+model_version: snapshot_v2
+experiment: s0_v1_joint_control
+ablation:
+  id: S0
+  parent: v1_baseline
+  changed_factor: none
+  purpose: reproduce_v1_through_snapshot_v2_pipeline
+
+data:
+  directory: data/generated/facebook_main
+  feature_indices: [0, 1]
+
+model:
+  architecture: v1_joint
+  input_dim: 2
+  hidden_dim: 64
+  dropout: 0.2
+
+training:
+  seed: 7026
+  device: cuda
+  learning_rate: 0.001
+  batch_size: 3
+  resume: true
+  max_epochs: 100
+  patience: 10
+
+loss:
+  lambda_count: 1.0
+  lambda_consistency: 0.0
+  use_pos_weight: true
+
+evaluation:
+  selection_split: validation
+  evaluate_test: false
+  test_policy: locked_until_candidate_freeze
+  final_holdout_policy: sealed_until_final_freeze

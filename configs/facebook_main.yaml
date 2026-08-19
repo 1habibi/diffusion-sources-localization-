@@ -1,3 +1,5 @@
+# Frozen snapshot dataset protocol used by v1 and snapshot-v2 comparisons.
+dataset_version: v1_snapshot_protocol
 graph:
   id: ego_facebook
   kind: edge_list

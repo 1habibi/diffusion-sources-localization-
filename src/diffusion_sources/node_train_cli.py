@@ -14,8 +14,9 @@ import torch
 import yaml
 
 from .dataset import load_graph_archive, load_pyg_split
+from .features import SnapshotFeatureBuilder
 from .inference import predict_oracle_k, predict_thresholded
-from .metrics import set_metrics, source_set_distances
+from .metrics import set_metrics, source_radius_hits, source_set_distances
 from .models import NodeOnlyGCN
 from .runtime import peak_memory_bytes, reset_peak_memory, runtime_metadata
 from .train_cli import calculate_pos_weight, load_train_config, set_seed
@@ -73,6 +74,7 @@ def evaluate_node_predictions(model, examples: list, graph, threshold: float):
                     "method": method,
                     **set_metrics(true_sources, prediction.sources),
                     **source_set_distances(graph, true_sources, prediction.sources),
+                    **source_radius_hits(graph, true_sources, prediction.sources),
                 }
             )
     return rows, _aggregate(rows)
@@ -91,6 +93,7 @@ def _aggregate(rows: list[dict]) -> dict:
                     for metric in (
                         "precision", "recall", "f1", "exact_set_accuracy",
                         "count_accuracy", "count_mae", "symmetric_set_distance",
+                        "hit_at_1_hop", "hit_at_2_hop",
                     )
                 }
     return result
@@ -102,24 +105,51 @@ def run_node_training(config: dict, output_dir: str | Path) -> dict:
     output_path.mkdir(parents=True, exist_ok=True)
     data_dir = Path(config["data"]["directory"])
     graph_id, graph = load_graph_archive(data_dir / "graph.npz")
-    feature_indices = [int(value) for value in config["data"].get("feature_indices", [0, 1])]
+    configured_feature_names = config["data"].get("feature_names")
+    feature_names = (
+        [str(value) for value in configured_feature_names]
+        if configured_feature_names is not None
+        else None
+    )
+    feature_indices = (
+        None
+        if feature_names is not None
+        else [int(value) for value in config["data"].get("feature_indices", [0, 1])]
+    )
     split_limits = config["data"].get("split_limits", {})
+    feature_builder = (
+        SnapshotFeatureBuilder(
+            graph,
+            distance_cache_path=config["data"].get("distance_cache"),
+            distance_cap=int(config["data"].get("distance_cap", 10)),
+        )
+        if feature_names is not None
+        else None
+    )
+    evaluate_test = bool(config.get("evaluation", {}).get("evaluate_test", True))
+    split_names = ("train", "validation", "test") if evaluate_test else ("train", "validation")
     splits = {
         split: load_pyg_split(
             data_dir / f"{split}.npz",
             graph,
             feature_indices=feature_indices,
+            feature_names=feature_names,
+            feature_builder=feature_builder,
             limit=(int(split_limits[split]) if split in split_limits else None),
         )
-        for split in ("train", "validation", "test")
+        for split in split_names
     }
     seed = int(config["training"].get("seed", 0))
     set_seed(seed)
     device = torch.device(config["training"].get("device", "cpu"))
     if device.type == "cuda" and not torch.cuda.is_available():
         raise RuntimeError("CUDA was requested but is not available.")
+    input_dim = len(feature_names) if feature_names is not None else len(feature_indices)
+    configured_input_dim = int(config["model"].get("input_dim", input_dim))
+    if configured_input_dim != input_dim:
+        raise ValueError("model.input_dim must match the selected data features.")
     model = NodeOnlyGCN(
-        input_dim=int(config["model"].get("input_dim", 2)),
+        input_dim=input_dim,
         hidden_dim=int(config["model"].get("hidden_dim", 64)),
         dropout=float(config["model"].get("dropout", 0.2)),
     ).to(device)
@@ -156,15 +186,17 @@ def run_node_training(config: dict, output_dir: str | Path) -> dict:
     threshold, validation_threshold_f1 = select_threshold(
         model, splits["validation"], thresholds
     )
-    rows, prediction_metrics = evaluate_node_predictions(
-        model, splits["test"], graph, threshold
-    )
-    with (output_path / "test_predictions.csv").open(
-        "w", newline="", encoding="utf-8"
-    ) as file:
-        writer = csv.DictWriter(file, fieldnames=list(rows[0]))
-        writer.writeheader()
-        writer.writerows(rows)
+    prediction_metrics = None
+    if evaluate_test:
+        rows, prediction_metrics = evaluate_node_predictions(
+            model, splits["test"], graph, threshold
+        )
+        with (output_path / "test_predictions.csv").open(
+            "w", newline="", encoding="utf-8"
+        ) as file:
+            writer = csv.DictWriter(file, fieldnames=list(rows[0]))
+            writer.writeheader()
+            writer.writerows(rows)
     learning_rate = float(optimizer.param_groups[0]["lr"])
     metrics = {
         split: asdict(
@@ -181,6 +213,7 @@ def run_node_training(config: dict, output_dir: str | Path) -> dict:
     summary = {
         "graph_id": graph_id,
         "feature_indices": feature_indices,
+        "feature_names": feature_names,
         "model": "node_only",
         "experiment": str(config.get("experiment", "node_only")),
         "seed": seed,
@@ -195,6 +228,7 @@ def run_node_training(config: dict, output_dir: str | Path) -> dict:
         "validation_threshold_f1": validation_threshold_f1,
         "metrics": metrics,
         "prediction_metrics": prediction_metrics,
+        "test_evaluated": evaluate_test,
         "runtime": runtime_metadata(device),
     }
     (output_path / "metrics.json").write_text(

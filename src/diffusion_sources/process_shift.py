@@ -21,7 +21,7 @@ from .dataset import graph_to_edge_index, load_graph_archive
 from .diffusion import simulate_si
 from .features import node_features
 from .inference import predict_joint
-from .metrics import set_metrics, source_set_distances
+from .metrics import set_metrics, source_radius_hits, source_set_distances
 from .models import JointSourceCountGCN
 from .observations import observe_cascade
 
@@ -93,6 +93,7 @@ def evaluate_process_shift(
                     "k": len(sources),
                     **set_metrics(sources, prediction.sources),
                     **source_set_distances(graph, sources, prediction.sources),
+                    **source_radius_hits(graph, sources, prediction.sources),
                 }
             )
 
@@ -116,12 +117,18 @@ def load_ic_rows(path: str | Path) -> list[dict]:
         "count_mae", "source_to_set_distance", "set_to_source_distance",
         "symmetric_set_distance",
     )
+    optional_float_fields = ("hit_at_1_hop", "hit_at_2_hop")
     return [
         {
             "process": "IC",
             "example": int(row["example"]),
             "k": int(row["k"]),
             **{field: float(row[field]) for field in float_fields},
+            **{
+                field: float(row[field])
+                for field in optional_float_fields
+                if row.get(field) not in (None, "")
+            },
         }
         for row in rows
         if row["method"] == "joint_estimated_k"
@@ -144,12 +151,21 @@ def aggregate_process_rows(rows: list[dict]) -> dict[str, dict]:
                 np.mean([row["symmetric_set_distance"] for row in selected])
             ),
         }
+        for metric in ("hit_at_1_hop", "hit_at_2_hop"):
+            if all(metric in row for row in selected):
+                result[process][metric] = float(
+                    np.mean([row[metric] for row in selected])
+                )
     return result
 
 
 def _write_csv(path: Path, rows: list[dict]) -> None:
+    fieldnames = list(rows[0])
+    fieldnames.extend(
+        key for row in rows[1:] for key in row if key not in fieldnames
+    )
     with path.open("w", newline="", encoding="utf-8") as file:
-        writer = csv.DictWriter(file, fieldnames=list(rows[0]))
+        writer = csv.DictWriter(file, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(rows)
 

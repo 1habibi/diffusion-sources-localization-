@@ -12,7 +12,7 @@ import torch
 from torch_geometric.data import Data
 
 from .diffusion import Cascade
-from .features import node_features
+from .features import GLOBAL_SCALAR_FEATURE_NAMES, SnapshotFeatureBuilder, node_features
 from .observations import Observation
 
 
@@ -107,6 +107,8 @@ def load_pyg_split(
     path: str | Path,
     graph: nx.Graph,
     feature_indices: list[int] | None = None,
+    feature_names: list[str] | None = None,
+    feature_builder: SnapshotFeatureBuilder | None = None,
     limit: int | None = None,
 ) -> list[Data]:
     """Load a generated split archive into independent PyG examples."""
@@ -120,25 +122,55 @@ def load_pyg_split(
         raise ValueError("Generated split arrays have inconsistent lengths.")
     if features.shape[1] != graph.number_of_nodes():
         raise ValueError("Generated split does not match graph node count.")
-    if feature_indices is None:
+    if feature_indices is not None and feature_names is not None:
+        raise ValueError("Use either feature_indices or feature_names, not both.")
+    if feature_indices is None and feature_names is None:
         feature_indices = list(range(features.shape[2]))
-    if not feature_indices or min(feature_indices) < 0 or max(feature_indices) >= features.shape[2]:
+    if feature_indices is not None and (
+        not feature_indices
+        or min(feature_indices) < 0
+        or max(feature_indices) >= features.shape[2]
+    ):
         raise ValueError("feature_indices must select available feature columns.")
 
     if limit is not None and limit < 1:
         raise ValueError("limit must be positive when provided.")
     example_count = min(len(features), limit) if limit is not None else len(features)
     edge_index = graph_to_edge_index(graph)
+    if feature_names is None and feature_builder is not None:
+        raise ValueError("feature_builder requires feature_names.")
+    if feature_names is not None and feature_builder is None:
+        feature_builder = SnapshotFeatureBuilder(graph)
     examples: list[Data] = []
     for index in range(example_count):
+        selected_features = (
+            feature_builder.build(
+                features[index, :, 0].astype(bool),
+                feature_names,
+                base_features=features[index],
+                candidate_mask=candidate_masks[index],
+            )
+            if feature_builder is not None
+            else features[index][:, feature_indices]
+        )
         examples.append(
             Data(
-                x=torch.from_numpy(features[index][:, feature_indices]).float(),
+                x=torch.from_numpy(selected_features).float(),
                 edge_index=edge_index,
                 candidate_mask=torch.from_numpy(candidate_masks[index]).bool(),
                 source_labels=torch.from_numpy(source_labels[index]).float(),
                 source_count=torch.tensor(int(source_counts[index]), dtype=torch.long),
                 observed_mask=torch.from_numpy(features[index, :, 0].astype(bool)),
+                global_features=torch.from_numpy(
+                    selected_features[
+                        :1,
+                        [
+                            feature_index
+                            for feature_index, name in enumerate(feature_names or ())
+                            if name in GLOBAL_SCALAR_FEATURE_NAMES
+                        ],
+                    ]
+                ).float(),
             )
         )
     return examples
