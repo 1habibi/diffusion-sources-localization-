@@ -14,6 +14,7 @@ from typing import Any
 import numpy as np
 import torch
 import yaml
+from tqdm.auto import tqdm
 
 from .dataset import load_graph_archive, load_pyg_split
 from .features import GLOBAL_SCALAR_FEATURE_NAMES, SnapshotFeatureBuilder
@@ -98,6 +99,7 @@ def run_training(config: dict[str, Any], output_dir: str | Path) -> dict[str, An
             feature_names=feature_names,
             feature_builder=feature_builder,
             limit=(int(split_limits[split]) if split in split_limits else None),
+            progress_description=f"Loading {split}",
         )
         print(
             f"[stage] Loaded {split}: {len(splits[split]):,} examples",
@@ -232,7 +234,10 @@ def run_training(config: dict[str, Any], output_dir: str | Path) -> dict[str, An
     }
     print("[stage] Evaluating detailed validation predictions...", flush=True)
     validation_rows, validation_prediction_metrics = evaluate_test_predictions(
-        model, splits["validation"], graph
+        model,
+        splits["validation"],
+        graph,
+        progress_description="Validation predictions",
     )
     _write_prediction_rows(
         output_path / "validation_predictions.csv", validation_rows
@@ -240,7 +245,10 @@ def run_training(config: dict[str, Any], output_dir: str | Path) -> dict[str, An
     prediction_metrics = None
     if evaluate_test:
         prediction_rows, prediction_metrics = evaluate_test_predictions(
-            model, splits["test"], graph
+            model,
+            splits["test"],
+            graph,
+            progress_description="Test predictions",
         )
         _write_prediction_rows(output_path / "test_predictions.csv", prediction_rows)
     shortlist_validation = None
@@ -268,6 +276,7 @@ def run_training(config: dict[str, Any], output_dir: str | Path) -> dict[str, An
                     "require_f1_or_latency_improvement", True
                 )
             ),
+            progress_description="Shortlist validation",
         )
         (output_path / "shortlist_validation.json").write_text(
             json.dumps(shortlist_validation, indent=2), encoding="utf-8"
@@ -319,11 +328,25 @@ def run_training(config: dict[str, Any], output_dir: str | Path) -> dict[str, An
 
 
 @torch.no_grad()
-def evaluate_test_predictions(model, examples: list, graph) -> tuple[list[dict], dict]:
+def evaluate_test_predictions(
+    model,
+    examples: list,
+    graph,
+    *,
+    progress_description: str | None = None,
+) -> tuple[list[dict], dict]:
     """Evaluate selected checkpoint in estimated-k and oracle-k modes."""
     model.eval()
     rows: list[dict] = []
-    for index, data in enumerate(examples):
+    for index, data in enumerate(
+        tqdm(
+            examples,
+            desc=progress_description,
+            unit="example",
+            leave=False,
+            disable=progress_description is None,
+        )
+    ):
         data = data.to(next(model.parameters()).device)
         source_logits, count_logits = model(data)
         true_sources = frozenset(

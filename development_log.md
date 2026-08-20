@@ -379,7 +379,9 @@ Notebook включает GPU/runtime-проверку, установку бе�
 
 ## 29. Наблюдаемость длительных Colab-запусков
 
-После первого полного запуска `S0` обнаружено, что дочерний Python-процесс мог буферизовать вывод, из-за чего работающая ячейка выглядела зависшей. Все длительные вызовы в `notebooks/colab_training_snapshot_v2.ipynb` переведены в unbuffered-режим (`python -u`), а training CLI теперь немедленно отмечает загрузку графа и каждого split, старт или resume обучения, завершение early stopping, расчёт агрегированных и детальных validation-метрик, shortlist-grid и сохранение артефактов. Изменение не затрагивает архитектуру, данные, loss, seed или правила принятия абляций.
+После первого полного запуска `S0` обнаружено, что дочерний Python-процесс мог буферизовать вывод, из-за чего работающая ячейка выглядела зависшей. Все длительные вызовы в `notebooks/colab_training_snapshot_v2.ipynb` переведены в unbuffered-режим (`python -u`) и единый `run_training_job`: GPU-smoke, S0-S7, варианты S5, LOO и frozen seeds теперь одинаково показывают старт, checkpoint, живой вывод и итоговое время. Setup размечен пятью стадиями.
+
+Training CLI немедленно отмечает загрузку графа и каждого split, старт или resume обучения, завершение early stopping, расчёт агрегированных и детальных validation-метрик, shortlist-grid и сохранение артефактов. `tqdm` показывает обработанные примеры при построении split, общий номер эпохи и `best_f1/patience`, mini-batch внутри train/train-eval/validation, детальные validation predictions и перебор каждого shortlist size и его примеров. Изменение не затрагивает архитектуру, данные, loss, seed или правила принятия абляций.
 
 ## История обновлений
 
@@ -408,4 +410,4 @@ Notebook включает GPU/runtime-проверку, установку бе�
 - **2026-08-19:** реализована `S6`; линейно избыточный center-score отклонён, итоговый normalized Multi-Jordan rank совпадает с baseline top-k, прошёл train/validation диагностику и smoke без test.
 - **2026-08-19:** реализована `S7` с detached preliminary-head, safe top-M/fallback и validation eligibility; smoke-гейт корректно отклонил небезопасные M без доступа к test.
 - **2026-08-19:** локальный pipeline S0-S7 завершён; создан отдельный полный Colab notebook snapshot-v2 с persisted validation decisions, LOO/freeze этапами и жёстким стопом до test/final holdout.
-- **2026-08-20:** длительные Colab-запуски переведены на unbuffered-вывод; добавлены явные стадии загрузки, обучения, validation-оценки и сохранения артефактов без изменения экспериментов.
+- **2026-08-20:** все длительные Colab-запуски переведены на единый live-runner и unbuffered-вывод; добавлены progress bars загрузки, эпох/mini-batch, validation и shortlist без изменения экспериментов.

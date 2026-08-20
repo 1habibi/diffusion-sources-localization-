@@ -410,7 +410,15 @@ def fit_joint_model(
     epochs_without_improvement = state["stale_epochs"]
     stop_reason = "max_epochs"
 
-    for epoch in range(state["start_epoch"], max_epochs + 1):
+    epoch_progress = tqdm(
+        range(state["start_epoch"], max_epochs + 1),
+        desc="Training epochs",
+        unit="epoch",
+        initial=state["start_epoch"] - 1,
+        total=max_epochs,
+        leave=True,
+    )
+    for epoch in epoch_progress:
         train_one_epoch(
             model,
             train_data,
@@ -477,6 +485,11 @@ def fit_joint_model(
             f"best F1 {best_score:.4f} | "
             f"{'improved' if improved else f'patience {epochs_without_improvement}/{patience}'} | "
             f"{train_metrics.duration_seconds + validation_metrics.duration_seconds:.1f}s"
+        )
+        epoch_progress.set_postfix(
+            best_f1=f"{best_score:.4f}",
+            patience=f"{epochs_without_improvement}/{patience}",
+            refresh=True,
         )
         if checkpoint_path is not None:
             save_last_checkpoint(

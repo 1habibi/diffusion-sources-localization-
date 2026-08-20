@@ -7,6 +7,7 @@ from typing import Any, Iterable
 
 import numpy as np
 import torch
+from tqdm.auto import tqdm
 
 from .inference import predict_joint
 from .metrics import set_metrics
@@ -24,6 +25,7 @@ def evaluate_shortlist_grid(
     per_k_recall_min: float = 0.95,
     bootstrap_ci_low_min: float = 0.93,
     require_f1_or_latency_improvement: bool = True,
+    progress_description: str | None = None,
 ) -> dict[str, Any]:
     """Compare full scoring with safe top-M inference on validation examples."""
     sizes = tuple(dict.fromkeys(int(size) for size in shortlist_sizes))
@@ -47,8 +49,15 @@ def evaluate_shortlist_grid(
         raise ValueError("Model does not support shortlist inference.")
 
     model.eval()
-    results = {
-        str(size): _evaluate_shortlist_size(
+    results = {}
+    for size in tqdm(
+        sizes,
+        desc=progress_description,
+        unit="size",
+        leave=False,
+        disable=progress_description is None,
+    ):
+        results[str(size)] = _evaluate_shortlist_size(
             model,
             data_items,
             size,
@@ -58,9 +67,10 @@ def evaluate_shortlist_grid(
             per_k_recall_min=per_k_recall_min,
             bootstrap_ci_low_min=bootstrap_ci_low_min,
             require_f1_or_latency_improvement=require_f1_or_latency_improvement,
+            progress_description=(
+                f"Shortlist M={size}" if progress_description is not None else None
+            ),
         )
-        for size in sizes
-    }
     eligible = [
         (size, results[str(size)])
         for size in sizes
@@ -106,6 +116,7 @@ def _evaluate_shortlist_size(
     per_k_recall_min: float,
     bootstrap_ci_low_min: float,
     require_f1_or_latency_improvement: bool,
+    progress_description: str | None = None,
 ) -> dict[str, Any]:
     device = next(model.parameters()).device
     retained_counts: list[int] = []
@@ -118,7 +129,13 @@ def _evaluate_shortlist_size(
     full_seconds = 0.0
     shortlist_seconds = 0.0
 
-    for example in examples:
+    for example in tqdm(
+        examples,
+        desc=progress_description,
+        unit="example",
+        leave=False,
+        disable=progress_description is None,
+    ):
         data = example.to(device)
         _synchronize(device)
         started = time.perf_counter()

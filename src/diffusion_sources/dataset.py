@@ -10,6 +10,7 @@ import networkx as nx
 import numpy as np
 import torch
 from torch_geometric.data import Data
+from tqdm.auto import tqdm
 
 from .diffusion import Cascade
 from .features import GLOBAL_SCALAR_FEATURE_NAMES, SnapshotFeatureBuilder, node_features
@@ -110,6 +111,7 @@ def load_pyg_split(
     feature_names: list[str] | None = None,
     feature_builder: SnapshotFeatureBuilder | None = None,
     limit: int | None = None,
+    progress_description: str | None = None,
 ) -> list[Data]:
     """Load a generated split archive into independent PyG examples."""
     archive = np.load(Path(path), allow_pickle=False)
@@ -142,7 +144,13 @@ def load_pyg_split(
     if feature_names is not None and feature_builder is None:
         feature_builder = SnapshotFeatureBuilder(graph)
     examples: list[Data] = []
-    for index in range(example_count):
+    for index in tqdm(
+        range(example_count),
+        desc=progress_description,
+        unit="example",
+        leave=False,
+        disable=progress_description is None,
+    ):
         selected_features = (
             feature_builder.build(
                 features[index, :, 0].astype(bool),
