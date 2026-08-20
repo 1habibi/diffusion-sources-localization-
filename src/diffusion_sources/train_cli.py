@@ -63,6 +63,7 @@ def run_training(config: dict[str, Any], output_dir: str | Path) -> dict[str, An
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
     data_dir = Path(config["data"]["directory"])
+    print(f"[stage] Loading graph: {data_dir / 'graph.npz'}", flush=True)
     graph_id, graph = load_graph_archive(data_dir / "graph.npz")
     configured_feature_names = config["data"].get("feature_names")
     feature_names = (
@@ -87,8 +88,10 @@ def run_training(config: dict[str, Any], output_dir: str | Path) -> dict[str, An
     )
     evaluate_test = bool(config.get("evaluation", {}).get("evaluate_test", True))
     split_names = ("train", "validation", "test") if evaluate_test else ("train", "validation")
-    splits = {
-        split: load_pyg_split(
+    splits = {}
+    for split in split_names:
+        print(f"[stage] Loading {split} split...", flush=True)
+        splits[split] = load_pyg_split(
             data_dir / f"{split}.npz",
             graph,
             feature_indices=feature_indices,
@@ -96,8 +99,10 @@ def run_training(config: dict[str, Any], output_dir: str | Path) -> dict[str, An
             feature_builder=feature_builder,
             limit=(int(split_limits[split]) if split in split_limits else None),
         )
-        for split in split_names
-    }
+        print(
+            f"[stage] Loaded {split}: {len(splits[split]):,} examples",
+            flush=True,
+        )
 
     seed = int(config["training"].get("seed", 0))
     set_seed(seed)
@@ -171,6 +176,12 @@ def run_training(config: dict[str, Any], output_dir: str | Path) -> dict[str, An
         else None
     )
 
+    resume_note = f"; resume={resume_from}" if resume_from is not None else ""
+    print(
+        f"[stage] Starting training on {device}: max_epochs={config['training'].get('max_epochs', 100)}, "
+        f"patience={config['training'].get('patience', 10)}{resume_note}",
+        flush=True,
+    )
     started_at = time.perf_counter()
     reset_peak_memory(device)
     result = fit_joint_model(
@@ -193,8 +204,14 @@ def run_training(config: dict[str, Any], output_dir: str | Path) -> dict[str, An
     )
     training_seconds = time.perf_counter() - started_at
     save_training_result(result, output_path)
+    print(
+        f"[stage] Training complete: best_epoch={result.best_epoch}, "
+        f"stopped_epoch={result.stopped_epoch}, elapsed={training_seconds / 60:.1f} min",
+        flush=True,
+    )
 
     learning_rate = float(optimizer.param_groups[0]["lr"])
+    print("[stage] Evaluating aggregate train/validation metrics...", flush=True)
     metrics = {
         split: asdict(
             evaluate_epoch(
@@ -213,6 +230,7 @@ def run_training(config: dict[str, Any], output_dir: str | Path) -> dict[str, An
         )
         for split, examples in splits.items()
     }
+    print("[stage] Evaluating detailed validation predictions...", flush=True)
     validation_rows, validation_prediction_metrics = evaluate_test_predictions(
         model, splits["validation"], graph
     )
@@ -227,6 +245,7 @@ def run_training(config: dict[str, Any], output_dir: str | Path) -> dict[str, An
         _write_prediction_rows(output_path / "test_predictions.csv", prediction_rows)
     shortlist_validation = None
     if shortlist_enabled:
+        print("[stage] Evaluating validation shortlist grid...", flush=True)
         shortlist_validation = evaluate_shortlist_grid(
             model,
             splits["validation"],
@@ -295,6 +314,7 @@ def run_training(config: dict[str, Any], output_dir: str | Path) -> dict[str, An
     (output_path / "config.yaml").write_text(
         yaml.safe_dump(config, sort_keys=False), encoding="utf-8"
     )
+    print(f"[stage] Artifacts saved: {output_path}", flush=True)
     return summary
 
 

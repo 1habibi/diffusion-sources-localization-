@@ -377,6 +377,10 @@ Notebook включает GPU/runtime-проверку, установку бе�
 
 Для обоснованных Colab-решений training CLI теперь всегда сохраняет `validation_predictions.csv` и `validation_prediction_metrics` с estimated/oracle режимами, F1 по `k=1/2/3`, exact set accuracy, count metrics, graph distance и Hit@1/2-hop. Это не открывает test: при test-lock по-прежнему загружаются только train/validation, а `test_predictions.csv` отсутствует.
 
+## 29. Наблюдаемость длительных Colab-запусков
+
+После первого полного запуска `S0` обнаружено, что дочерний Python-процесс мог буферизовать вывод, из-за чего работающая ячейка выглядела зависшей. Все длительные вызовы в `notebooks/colab_training_snapshot_v2.ipynb` переведены в unbuffered-режим (`python -u`), а training CLI теперь немедленно отмечает загрузку графа и каждого split, старт или resume обучения, завершение early stopping, расчёт агрегированных и детальных validation-метрик, shortlist-grid и сохранение артефактов. Изменение не затрагивает архитектуру, данные, loss, seed или правила принятия абляций.
+
 ## История обновлений
 
 - **2026-08-12:** создан журнал и зафиксировано состояние проекта после завершения программного MVP и Facebook-пилота.
@@ -404,3 +408,4 @@ Notebook включает GPU/runtime-проверку, установку бе�
 - **2026-08-19:** реализована `S6`; линейно избыточный center-score отклонён, итоговый normalized Multi-Jordan rank совпадает с baseline top-k, прошёл train/validation диагностику и smoke без test.
 - **2026-08-19:** реализована `S7` с detached preliminary-head, safe top-M/fallback и validation eligibility; smoke-гейт корректно отклонил небезопасные M без доступа к test.
 - **2026-08-19:** локальный pipeline S0-S7 завершён; создан отдельный полный Colab notebook snapshot-v2 с persisted validation decisions, LOO/freeze этапами и жёстким стопом до test/final holdout.
+- **2026-08-20:** длительные Colab-запуски переведены на unbuffered-вывод; добавлены явные стадии загрузки, обучения, validation-оценки и сохранения артефактов без изменения экспериментов.
