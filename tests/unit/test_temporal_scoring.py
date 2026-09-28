@@ -58,7 +58,7 @@ def test_forbidden_split_rejected_before_read(split, tmp_path):
         collect_records(tmp_path / 'missing', tmp_path / 'missing', split, [0], torch.device('cpu'))
 
 
-def test_collect_real_inference(temporal_dataset, tmp_path):
+def test_collect_real_inference(temporal_dataset, tmp_path, monkeypatch):
     from diffusion_sources.temporal_scoring import collect_records, correct_sources
     import yaml
     from diffusion_sources.models import JointSourceCountGCN
@@ -69,11 +69,39 @@ def test_collect_real_inference(temporal_dataset, tmp_path):
               'model': {'hidden_dim': 8, 'dropout': 0.}, 'training': {'seed': 13}}
     (run / 'config.yaml').write_text(yaml.safe_dump(config))
     torch.save(JointSourceCountGCN(input_dim=2, hidden_dim=8, dropout=0.).state_dict(), run / 'best_model.pt')
+    accesses = {}
+    original_load = np.load
+    class CountedArchive:
+        def __init__(self, archive):
+            self.archive = archive
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            self.archive.close()
+        def __contains__(self, key):
+            return key in self.archive
+        def __getitem__(self, key):
+            accesses[key] = accesses.get(key, 0) + 1
+            return self.archive[key]
+    def counted_load(path, *args, **kwargs):
+        archive = original_load(path, *args, **kwargs)
+        return CountedArchive(archive) if str(path).endswith('train.npz') else archive
+    # Loader without a context manager also owns this archive: keep original
+    # for its one-time conversion, and count just the replay's context-managed archive.
+    replay_opened = False
+    def first_only(path, *args, **kwargs):
+        nonlocal replay_opened
+        if str(path).endswith('train.npz') and not replay_opened:
+            replay_opened = True
+            return counted_load(path, *args, **kwargs)
+        return original_load(path, *args, **kwargs)
+    monkeypatch.setattr(np, 'load', first_only)
     records = collect_records(data, run, 'train', [0, 1, 2], torch.device('cpu'))
     assert [r.index for r in records] == [0, 1, 2]
     for r in records:
         assert correct_sources(r.candidates, 0.) == r.candidates.baseline_sources
         assert r.true_sources <= set(r.candidates.candidate_ids)
         assert len(correct_sources(r.candidates, 1.)) == len(r.candidates.baseline_sources)
+    assert max(accesses.values()) == 1, 'Replay must unpack each full-split field once, not once per cascade'
     with pytest.raises(ValueError):
         collect_records(data, run, 'train', [0, 0], torch.device('cpu'))

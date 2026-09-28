@@ -15,7 +15,7 @@ from .features import SnapshotFeatureBuilder
 from .inference import predict_joint
 from .metrics import set_metrics
 from .models import JointSourceCountGCN
-from .temporal_replay import replay_early_mask
+from .temporal_replay import FIELDS, replay_early_mask
 
 
 @dataclass(frozen=True)
@@ -85,7 +85,10 @@ def collect_records(data_dir: Path, run_dir: Path, split: str,
     _, graph = load_graph_archive(data_dir / 'graph.npz')
     builder = SnapshotFeatureBuilder(graph, distance_cache_path=config['data'].get('distance_cache'),
                                      distance_cap=int(config['data'].get('distance_cap', 10)))
-    with np.load(data_dir / f'{split}.npz', allow_pickle=False) as archive:
+    with np.load(data_dir / f'{split}.npz', allow_pickle=False) as compressed:
+        # NpzFile.__getitem__ decompresses a whole split array on every access.
+        # Materialize once before per-cascade replay, not thousands of times.
+        archive = {field: compressed[field] for field in FIELDS}
         if max(indices) >= len(archive['source_counts']):
             raise ValueError('indices outside split.')
         examples = load_pyg_split(data_dir / f'{split}.npz', graph, feature_names=names,
@@ -104,7 +107,9 @@ def collect_records(data_dir: Path, run_dir: Path, split: str,
         with torch.inference_mode():
             for index in tqdm(indices, desc=f'Replay + frozen inference ({split})', unit='cascade'):
                 early = replay_early_mask(graph, generation_config, archive, index)
-                example = examples[index].to(device)
+                # Data.to mutates its receiver; do not retain one GPU graph per
+                # cascade in the CPU examples list throughout validation.
+                example = examples[index].clone().to(device)
                 logits, counts = model(example)
                 baseline = predict_joint(logits, counts, example.candidate_mask)
                 ids = torch.where(example.candidate_mask)[0].cpu().tolist()
