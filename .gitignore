@@ -24,3 +24,4 @@ diffusion-sources/
 .idea/
 .vscode/
 .DS_Store
+.worktrees/
