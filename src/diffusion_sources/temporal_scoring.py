@@ -65,6 +65,24 @@ def select_beta(records: Sequence[PilotRecord], grid: Sequence[float]) -> tuple[
     return selected, table
 
 
+def _readonly_feature_builder(graph, data_config):
+    # Never pass a writable frozen cache path to the existing feature builder.
+    builder = SnapshotFeatureBuilder(graph, distance_cap=int(data_config.get('distance_cap', 10)))
+    configured = data_config.get('distance_cache')
+    if configured is not None and Path(configured).exists():
+        with np.load(configured, allow_pickle=False) as archive:
+            fingerprint = str(archive['graph_fingerprint'].item())
+            matrix = np.asarray(archive['distances'], dtype=np.uint16)
+        if fingerprint != builder.graph_fingerprint:
+            raise ValueError('Distance cache graph fingerprint does not match.')
+        if matrix.shape != (builder.node_count, builder.node_count):
+            raise ValueError('Distance cache shape does not match graph node count.')
+        builder._distance_matrix = matrix
+    else:
+        print(f'Distance cache unavailable ({configured}); deterministic in-memory recomputation only.', flush=True)
+    return builder
+
+
 def collect_records(data_dir: Path, run_dir: Path, split: str,
                     indices: Sequence[int], device: torch.device) -> list[PilotRecord]:
     if split not in ('train', 'validation'):
@@ -83,8 +101,7 @@ def collect_records(data_dir: Path, run_dir: Path, split: str,
     if device.type == 'cuda' and not torch.cuda.is_available():
         raise ValueError('CUDA unavailable; use CPU smoke or select a Colab GPU.')
     _, graph = load_graph_archive(data_dir / 'graph.npz')
-    builder = SnapshotFeatureBuilder(graph, distance_cache_path=config['data'].get('distance_cache'),
-                                     distance_cap=int(config['data'].get('distance_cap', 10)))
+    builder = _readonly_feature_builder(graph, config['data'])
     with np.load(data_dir / f'{split}.npz', allow_pickle=False) as compressed:
         # NpzFile.__getitem__ decompresses a whole split array on every access.
         # Materialize once before per-cascade replay, not thousands of times.

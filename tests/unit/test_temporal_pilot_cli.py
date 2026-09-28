@@ -63,3 +63,20 @@ def test_cli_help_and_error_return():
     code = main(['smoke', '--data-dir', 'missing-data', '--run-dir', 'missing-run',
                   '--output-dir', 'missing-out'])
     assert code != 0
+
+
+def test_changed_distance_cache_rejects_resume(temporal_dataset, tmp_path):
+    from diffusion_sources.temporal_pilot_cli import _identity, _resume
+    from diffusion_sources.temporal_pilot_artifacts import write_stage
+    data, _ = temporal_dataset
+    run = tmp_path / 'run'; run.mkdir()
+    cache = run / 'distances.npz'
+    (run / 'config.yaml').write_text(yaml.safe_dump({'data': {'distance_cache': str(cache)}}))
+    (run / 'best_model.pt').write_bytes(b'checkpoint')
+    cache.write_bytes(b'original distance matrix')
+    identity = _identity(data, run, ('train',))
+    out = tmp_path / 'pilot'
+    write_stage(out, 'smoke', {'identity': identity}, {'n': 6})
+    cache.write_bytes(b'changed distance matrix')
+    with pytest.raises(ValueError, match='identity'):
+        _resume(out, 'smoke', _identity(data, run, ('train',)))

@@ -105,3 +105,21 @@ def test_collect_real_inference(temporal_dataset, tmp_path, monkeypatch):
     assert max(accesses.values()) == 1, 'Replay must unpack each full-split field once, not once per cascade'
     with pytest.raises(ValueError):
         collect_records(data, run, 'train', [0, 0], torch.device('cpu'))
+
+
+def test_missing_frozen_distance_cache_is_not_created(temporal_dataset, tmp_path, capsys):
+    from diffusion_sources.temporal_scoring import collect_records
+    from diffusion_sources.models import JointSourceCountGCN
+    import yaml
+    data, _ = temporal_dataset
+    run = tmp_path / 'run'; run.mkdir()
+    cache = run / 'old-cache' / 'distances.npz'
+    names = ['observed_infected', 'mean_distance_to_observed_normalized']
+    config = {'data': {'feature_names': names, 'distance_cache': str(cache)},
+              'model': {'hidden_dim': 8, 'dropout': 0.}, 'training': {'seed': 13}}
+    (run / 'config.yaml').write_text(yaml.safe_dump(config))
+    torch.save(JointSourceCountGCN(input_dim=2, hidden_dim=8, dropout=0.).state_dict(), run / 'best_model.pt')
+    records = collect_records(data, run, 'train', [0], torch.device('cpu'))
+    assert len(records) == 1
+    assert not cache.parent.exists(), 'Pilot must not write into frozen cache paths'
+    assert 'in-memory' in capsys.readouterr().out

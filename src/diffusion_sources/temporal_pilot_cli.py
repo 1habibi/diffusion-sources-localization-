@@ -55,7 +55,12 @@ def _identity(data: Path, run: Path, splits: tuple[str, ...]):
     paths = {'graph': data / 'graph.npz', 'generation_config': data / 'config.yaml',
              'model_config': run / 'config.yaml', 'checkpoint': run / 'best_model.pt'}
     paths.update({split: data / f'{split}.npz' for split in splits})
+    cache = _load_config(run / 'config.yaml').get('data', {}).get('distance_cache')
+    cache_path = Path(cache) if cache is not None else None
+    cache_identity = {'policy': 'read-only-cache-or-in-memory-v1',
+                      'sha256': sha256_file(cache_path) if cache_path is not None and cache_path.exists() else None}
     return {'inputs': {key: sha256_file(path) for key, path in paths.items()},
+            'distance_cache': cache_identity,
             'code': _code_identity(), 'policy': POLICY_VERSION,
             't1': 1, 'rng': [5000000, 'observation_seed', 1]}
 
