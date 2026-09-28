@@ -1,6 +1,6 @@
 # Temporal-v3: независимая оценка frozen метода без обучения
 
-Дата: 2026-09-28. Статус: письменный дизайн для просмотра пользователем.
+Дата: 2026-09-28. Статус: письменный дизайн одобрен пользователем сообщением «го».
 Пользователь одобрил направление: новые 1998 каскадов, те же три frozen модели,
 без переобучения, затем оформление результатов. Этот документ конкретизирует
 правила до реализации. Старый test и snapshot holdout не оцениваются.
@@ -57,13 +57,18 @@ holdout сейчас тратит его прежнее назначение. Н
 - В Colab корень Drive: /content/drive/MyDrive/diffusion-sources.
   Данные: data/generated/facebook_temporal_v3_independent_holdout.
   Отчёты: reports/runs/temporal_v3_independent_evaluation/v1.
-  Reference: data/generated/facebook_main и facebook_snapshot_final_holdout.
+  Reference: data/facebook_main (путь действующего Colab notebook) и
+  data/facebook_snapshot_final_holdout. Второй путь — явно проверяемый ожидаемый
+  путь; его наличие на Drive пока не подтверждено. Если отсутствует, пользователь
+  должен указать фактическое расположение sealed snapshot holdout.
   Frozen runs: reports/runs/facebook_main_v2/s1b/seed_7026 и
   frozen_candidate/seed_7027, frozen_candidate/seed_7028.
 - Конфиг реализации: configs/facebook_temporal_v3_independent_holdout.yaml.
   Relative raw-graph path разрешается из проверенного repo root, не случайного cwd.
   Если Drive-пути не существуют, остановиться и запросить точный путь;
   нельзя молча подменить данные или создать новый snapshot holdout.
+  Pilot: reports/runs/temporal_v3_paired_pilot/v1; baseline:
+  reports/runs/temporal_v3_early_baseline/v1.
 
 Генератор неизбежно создаёт source labels, но ни модель, ни аналитик не используют
 новые target-метрики до разрешённой оценки. Seal читает только seeds/schema/file
@@ -195,7 +200,7 @@ resume seed 7027; seed 7028; summary. Direct kernel progress/JSON output,
 
 ## Gate перед реализацией
 
-Пользователь просматривает и одобряет этот письменный дизайн. Затем создаётся
-implementation plan и выбирается способ исполнения. До этих этапов продуктовый
+Пользователь одобрил этот письменный дизайн. Следующий этап — просмотр
+implementation plan и выбор способа исполнения. До этих этапов продуктовый
 код, новый датасет и evaluator не создаются. В этой сессии независимая оценка
 не выполнялась и её результат не заявляется.
