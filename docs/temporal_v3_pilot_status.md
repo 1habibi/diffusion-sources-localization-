@@ -27,6 +27,14 @@ Frozen S1b/validation F1 здесь не оценивался: checkpoint нах
 
 ## Решения исполнения
 
+### Colab результат (обновление 2026-09-28)
+
+Присланные пользователем stage JSON подтверждают выполнение пилота: smoke identity=true; beta0.5 выбран на540 train. На validation1998 baseline F1 для frozen7026/7027/7028=0.362996/0.353387/0.359243, temporal F1=0.538906/0.537421/0.539439. Mean delta=+0.180047, оба gates passed=true, count unchanged. Все paired bootstrap CI выше0. Уточнение к прежним implementation-status записям выше: Colab inference теперь выполнен, но обучение temporal-модели и независимая test/holdout оценка — нет. Источник — присланные payload summaries, не отдельная сверка Drive manifests.
+
+Вывод subprocess не отображался в notebook; результаты доступны в JSON. Это отдельный дефект вывода, код пока не менялся. Новое обучение автоматически не запускается; следующий этап обсуждается отдельно. Подробности: раздел42 development_log и experiment_registry.
+
+### Решения при реализации
+
 1. Native worktree tool не распознал родительскую папку как Git repository; использован Git worktree в `.worktrees/`. Цена: нет автоматической привязки worktree в приложении.
 2. Bash ledger scripts не запускались из-за Windows signal-pipe permissions; bookkeeping выполнен PowerShell/apply_patch с теми же test gates. Цена: ручной учёт.
 3. Вместо текстовых notebook assertions проверяется исполнение ячеек с заменой внешних subprocess/Colab-зависимостей. Цена: реальную Colab/GPU-среду нужно проверить отдельно.

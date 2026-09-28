@@ -504,6 +504,40 @@ Frozen S1b inference на validation пока не выполнен: checkpoint 
 
 Проверка объединённого master: `181 passed` за44.25 секунды, два прежних PyTorch deprecation warnings; `compileall` и `git diff --check` прошли. Перед push сохранён отдельный documentation commit с журналом и реестром, без включения model_improvement_plan.
 
+## 42. Colab temporal-v3 paired pilot: положительный результат без обучения
+
+2026-09-28 пользователь выполнил setup/smoke/select/validation/confirmation в Colab на Tesla T4, PyTorch2.11.0+cu128. Источник чисел — присланный текст сохранённых stage payloads; Drive manifests и per-example CSV в этой сессии отдельно не загружались. Пустой вывод subprocess в notebook не означал отсутствие расчёта: результаты показаны чтением JSON из PILOT_DIR. Сама функция run_stage пока не исправлена.
+
+Smoke:6 train-примеров, beta_zero_identity=true, reported duration5.235s (это время smoke после входных hash checks, не полное время ячейки). На540 train-примерах выбран beta0.5: F1 по beta0/0.1/0.25/0.5/1.0 составил0.357407/0.481852/0.518025/0.537160/0.530556. Validation для выбора beta не использовалась согласно реализованному pipeline.
+
+| Frozen seed | Snapshot S1b F1 | Temporal correction F1 | Paired delta | Paired bootstrap95% CI |
+|---|---:|---:|---:|---|
+|7026|0.362996|0.538906|+0.175909|[0.161843,0.190910]|
+|7027|0.353387|0.537421|+0.184034|[0.170102,0.199367]|
+|7028|0.359243|0.539439|+0.180197|[0.165999,0.194995]|
+
+По трём training seeds F1(mean±sample SD): snapshot0.358542±0.004843, temporal0.538589±0.001046; mean delta+0.180047. Это повторная оценка на одном и том же validation split, не три независимых датасета. Primary и confirmation gates passed=true, reasons=[]; на каждом seed улучшились все k-страты, count accuracy/MAE неизменны. Для7026 delta по k1/2/3=+0.257257/+0.158559/+0.111912; k1 F1 вырос0.145646→0.402903.
+
+Средние по seed: exact-set accuracy0.073073→0.234401, symmetric distance1.124875→0.616783, Hit@1-hop0.534062→0.828328. Early coverage одинакова в отчётах всех seeds: source recall0.758258, all-source fraction0.630130, empty fraction0.017518.
+
+Вывод ограничен постановкой: это frozen S1b плюс простой корректор с дополнительным source-blind ранним наблюдением, а не переобученный GCN или архитектурное превосходство при одинаковом входе. Validation ранее участвовала в разведке; результат остаётся exploratory. Test/final holdout не оценивались в pipeline. Следующий разумный недорогой этап — сравнение с ранним наблюдением без learned scores и разрезы по k/candidate size до нового обучения; дизайн дальнейшей temporal-модели требует отдельного согласования.
+
+## 43. Early-only baseline для оценки вклада learned ranking
+
+2026-09-28 пользователь согласовал и запустил реализацию недорогой абляции без обучения: snapshot S1b, раннее наблюдение без learned source scores и S1b с фиксированным early-корректором. Используются те же 1998 validation-примеров и frozen seed 7026/7027/7028; beta не подбирается заново, test/holdout остаются закрытыми.
+
+Во всех вариантах сохранена одна frozen count-head, поэтому сравнение измеряет вклад ранжирования, а не полностью безнейросетевой алгоритм. Early-first ties интегрируются аналитически как ожидаемый F1 равномерного выбора внутри ранней/поздней группы, без bias по ID. Добавлены разрезы по k/candidate size, парный стратифицированный bootstrap и сводка трёх seeds. Результат остаётся exploratory.
+
+Реализация находится в отдельной ветке codex/temporal-early-baseline; notebook расширен ячейками 8–12 с прямым выводом в kernel. Старые pilot-артефакты не изменяются; перед расчётом проверяются historical code/input hashes, beta, early masks и контрольные snapshot/temporal F1. На review исправлен риск выполнения cached analysis imports после git pull; RED→GREEN тест подтверждает reload scoring перед runner. Фактический early-only F1 в Colab ещё не измерен, публикация ожидает отдельного решения пользователя. Детали исполнения и проверки — docs/temporal_early_baseline_status.md в feature branch.
+
+Локальная финальная проверка: 202 passed за 43.84 секунды, два прежних PyTorch deprecation warnings; compileall и git diff --check прошли. Числа раннего baseline ожидаются после отдельного Colab inference, обучение не выполнялось.
+
+## 44. Интеграция early-only анализа и публикация
+
+2026-09-28 пользователь явно разрешил merge и push всех текущих изменений. GitHub master перед merge совпадал с локальным master (07032d5); ветка codex/temporal-early-baseline интегрирована fast-forward до 54d9331 без конфликтов. В публикацию включаются результаты Colab-пилота, журнал и существующая локальная правка model_improvement_plan без её изменения. Данные/checkpoints, исключённые через gitignore, не добавляются. Следующий Colab этап — обновлённый notebook, подготовка baseline (ячейка 8), затем отдельный seed 7026 (ячейка 9); прежние стадии 4–7 не повторять.
+
+На объединённом master повторно прошли 202 теста за 44.60 секунды (два прежних предупреждения PyTorch); compileall и diff check успешны. Результат early-only baseline ещё не измерен.
+
 ## История обновлений
 
 - **2026-08-12:** создан журнал и зафиксировано состояние проекта после завершения программного MVP и Facebook-пилота.
@@ -555,3 +589,4 @@ Frozen S1b inference на validation пока не выполнен: checkpoint 
 - **2026-09-28:** пользователь одобрил дизайн temporal-v3; подготовлен пошаговый план реализации с тестами и отдельным notebook. Выполнение ожидает согласования плана.
 - **2026-09-28:** реализован парный пилот temporal-v3 без обучения в изолированной ветке; после независимого review и исправлений прошёл 181 тест, реальный replay проверен на шести train-примерах. Frozen validation/Colab и публикация ещё не выполнялись.
 - **2026-09-28:** temporal-v3 интегрирован fast-forward в master по разрешению пользователя; исходные локальные документы сохранились побайтно. Colab execution остаётся следующим этапом.
+- **2026-09-28:** по присланным Colab-отчётам temporal paired pilot прошёл оба gates без обучения: mean F1 0.358542→0.538589, mean delta+0.180047 на трёх frozen seeds. Исправление отображения stdout остаётся отдельной задачей; независимая закрытая оценка не проводилась.

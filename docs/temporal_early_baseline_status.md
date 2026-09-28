@@ -61,3 +61,14 @@ for the forthcoming real frozen-checkpoint Colab run.
 Final local verification: **202 passed**, two existing PyTorch deprecation
 warnings, 43.84 seconds. `compileall -q src scripts` and `git diff --check`
 passed. No real Colab result is claimed.
+
+## Integration
+
+2026-09-28: user authorized merge and push. Feature commit `54d9331`
+fast-forward merged into `master` without conflicts. Publication includes the
+development log and existing local experiment-document updates. Next external
+step remains Colab baseline setup (cell 8), then frozen seed 7026 (cell 9),
+without rerunning old stages 4–7.
+
+Merged-master verification: 202 passed in 44.60 seconds, two existing warnings;
+compileall and diff check passed.
