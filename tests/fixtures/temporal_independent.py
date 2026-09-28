@@ -26,7 +26,7 @@ def save_graph(root, changed=False):
     np.savez(root / 'graph.npz', graph_id='ego_facebook', node_count=10, edges=edges)
 
 
-def make_case(tmp_path, monkeypatch=None, absent_cache=False):
+def make_case(tmp_path, monkeypatch=None, absent_cache=False, real_checkpoint=False):
     from diffusion_sources.temporal_early_baseline import POLICY
     repo = tmp_path / 'repo'
     repo.mkdir()
@@ -53,7 +53,14 @@ def make_case(tmp_path, monkeypatch=None, absent_cache=False):
         if absent_cache:
             run_cfg['data']['distance_cache'] = str(tmp_path / f'cache_{seed}.npz')
         (run / 'config.yaml').write_text(yaml.safe_dump(run_cfg))
-        (run / 'best_model.pt').write_bytes(f'checkpoint {seed}'.encode())
+        if real_checkpoint:
+            import torch
+            from diffusion_sources.models import JointSourceCountGCN
+            torch.manual_seed(seed)
+            torch.save(JointSourceCountGCN(input_dim=2, hidden_dim=8, dropout=0.).state_dict(),
+                       run / 'best_model.pt')
+        else:
+            (run / 'best_model.pt').write_bytes(f'checkpoint {seed}'.encode())
         metrics = {'validation_prediction_metrics': {'joint_estimated_k': {'all': {'f1': .35}}}}
         (run / 'metrics.json').write_text(json.dumps(metrics))
         runs[seed] = run
