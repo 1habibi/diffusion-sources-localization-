@@ -77,7 +77,10 @@ scoring/bootstrap и отдельную проверку настоящей GCN/
 в raw/archive fingerprint, отсутствие raw в свежем clone, неполный runtime
 identity. Все три исправлены с RED→GREEN регрессиями (42 targeted tests)
 и полным зелёным прогоном 285 тестов. Critical/Minor замечаний нет.
-Ветка готова к решению пользователя об интеграции; merge/push не выполнены.
+2026-09-29 по разрешению пользователя ветка опубликована на GitHub (PR #1),
+реализация `ac4c9d7` интегрирована fast-forward в локальный master.
+Повторная проверка объединённого master: 285 passed, 2 прежних предупреждения,
+345.99s; compileall и diff-check прошли. Публикация master — следующий шаг.
 
 Drive availability/совместимость артефактов проверяется настоящими freeze/seal
 выводами пользователя, не синтетическими fixture. GPU memory/time и качество
