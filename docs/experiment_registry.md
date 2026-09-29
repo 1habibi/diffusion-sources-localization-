@@ -2,6 +2,21 @@
 
 Этот документ задает правила работы с текущей моделью и ее улучшенными версиями.
 
+## Новый exploratory пилот: temporal_v3_learned_reranker/v1
+
+Три лёгких LogisticRegression C=0.1/1/10 поверх frozen S1b, шесть наблюдаемых
+признаков; count-head и candidate set неизменны. Контроль — текущая Temporal-v3
+beta=0.5. Fit 1620 + selection-dev 540 целых train-каскадов; validation 1998 и
+frozen repeats разрешаются только gates. Scaler fit-only; выбранный head без refit.
+Независимая оценка и интеграция в UI не разрешаются автоматически.
+
+[Notebook](../notebooks/colab_temporal_learned_reranker.ipynb),
+[технический статус](temporal_learned_reranker_status.md).
+Новых реальных метрик качества нет: выполнен только CPU smoke шести train-примеров
+без обучения (9.797 s), защищённые входы и manifest сохранили SHA256.
+Артефакты smoke: `reports/runs/temporal_v3_learned_reranker/local_smoke_v2/`.
+Рабочий `v1` пока не запускался. Это черновая экспериментальная ветка, не чистовик.
+
 ## Главное правило
 
 Артефакты `v1` не изменяются и не перезаписываются. Любая новая архитектура, конфигурация, диагностика или серия seed получает отдельный каталог и отдельное имя версии.
