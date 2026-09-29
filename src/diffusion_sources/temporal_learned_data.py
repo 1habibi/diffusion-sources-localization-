@@ -58,7 +58,7 @@ def validate_table(t):
             raise ValueError(f'Invalid {name}')
     for name, shape in (('labels', (r,)), ('early_flags', (r,)), ('early_empty', (n,))):
         a = np.asarray(getattr(t, name))
-        if a.shape != shape or not np.isin(a, [0, 1]).all():
+        if a.shape != shape or a.dtype.kind not in 'biuf' or not np.isin(a, [0, 1]).all():
             raise ValueError(f'Invalid binary {name}')
     p = np.asarray(t.probabilities)
     if p.shape != (r,) or not np.isfinite(p).all() or ((p < 0) | (p > 1)).any():

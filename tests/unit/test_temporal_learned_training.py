@@ -67,3 +67,15 @@ def test_timeout_stops_between_fits(monkeypatch):
     monkeypatch.setattr('diffusion_sources.temporal_learned_training.time.monotonic',lambda:next(ticks))
     with pytest.raises(TimeoutError):
         select_head(tiny_table(),replace(tiny_table(),indices=np.arange(6)+10),tiny_graph(),budget_seconds=1)
+
+
+def test_tie_tolerance_is_relative_to_maximum_not_running_best(monkeypatch):
+    from tests.unit.test_temporal_learned_evaluation import gate_report
+    values=iter([.5,.5+.8e-12,.5+1.6e-12])
+    def scores(*args,**kwargs):
+        report=gate_report()
+        report['learned']={'all':{'f1':next(values)}}
+        return report
+    monkeypatch.setattr('diffusion_sources.temporal_learned_training.evaluate_reranker',scores)
+    h,_=select_head(tiny_table(),replace(tiny_table(),indices=np.arange(6)+10),tiny_graph())
+    assert h.C==1.

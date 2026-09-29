@@ -84,3 +84,12 @@ def test_forbidden_split_never_opens_archive(tmp_path, monkeypatch):
     for split in ('test', 'final_holdout', 'independent_holdout', '../train'):
         with pytest.raises(ValueError):
             cache_identity(tmp_path, tmp_path, split, [0], torch.device('cpu'))
+
+
+@pytest.mark.parametrize('name', ['labels','early_flags','early_empty'])
+def test_object_arrays_rejected_before_cache_write(name, tmp_path):
+    table=tiny_table()
+    table=replace(table,**{name:getattr(table,name).astype(object)})
+    with pytest.raises(ValueError,match='binary'):
+        save_cache(tmp_path,'objects',{},table)
+    assert not (tmp_path/'objects').exists()

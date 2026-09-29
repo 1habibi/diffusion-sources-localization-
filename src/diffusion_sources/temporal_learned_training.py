@@ -83,10 +83,10 @@ def select_head(fit,dev,graph,*,budget_seconds=1800):
         candidates.append(dict(C=C,report=report,elapsed_seconds=time.monotonic()-start,effective_parameters=effective_parameters(C)))
         heads.append(h)
         print(f'C={C:g}: dev F1={report["learned"]["all"]["f1"]:.6f}; delta-v3={report["delta_f1"]:+.6f}',flush=True)
-    best=0
-    for j in range(1,len(candidates)):
-        if candidates[j]['report']['learned']['all']['f1'] > candidates[best]['report']['learned']['all']['f1']+1e-12:
-            best=j
+    maximum=max(c['report']['learned']['all']['f1'] for c in candidates)
+    # Compare each candidate with the maximum; running-best comparisons can
+    # incorrectly chain near-ties and choose the larger C.
+    best=next(j for j,c in enumerate(candidates) if maximum-c['report']['learned']['all']['f1']<=1e-12)
     chosen=heads[best]
     report=candidates[best]['report']
     gate=dev_gate(report)
