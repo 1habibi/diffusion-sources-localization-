@@ -125,3 +125,55 @@ def test_git_revision_change_requires_same_frozen_code(tmp_path, monkeypatch):
     monkeypatch.setattr(a, '_code_identity', lambda: {**real(), 'revision': 'changed'})
     with pytest.raises(ValueError, match='identity'):
         a.verify_freeze(paths)
+
+
+@pytest.mark.parametrize('node_count', [12, 20])
+def test_same_undirected_raw_archive_graph_with_lexicographic_ids(tmp_path, node_count):
+    from tests.fixtures.temporal_independent import make_case
+    from diffusion_sources.temporal_independent_artifacts import freeze_inputs, verify_freeze
+    paths = make_case(tmp_path, node_count=node_count)
+    frozen = freeze_inputs(paths)
+    assert frozen['identity']['topology']['nodes'] == node_count
+    assert verify_freeze(paths) == frozen
+
+
+def test_different_edges_with_same_large_graph_size_rejected(tmp_path):
+    from tests.fixtures.temporal_independent import make_case
+    from diffusion_sources.temporal_independent_artifacts import freeze_inputs
+    paths = make_case(tmp_path, node_count=12)
+    (paths.repo / 'raw.txt').write_text(''.join(f'{i} {i+1}\n' for i in range(10)) + '0 11\n')
+    with pytest.raises(ValueError, match='topology mismatch'):
+        freeze_inputs(paths)
+
+
+def test_canonical_undirected_insertion_order_and_label_mapping(tmp_path):
+    from diffusion_sources.temporal_independent_artifacts import topology
+    edges = [(0, 1), (1, 2), (2, 3), (3, 4)]
+    np.savez(tmp_path / 'a.npz', graph_id='same', node_count=5, edges=edges)
+    np.savez(tmp_path / 'b.npz', graph_id='same', node_count=5, edges=[(v, u) for u, v in edges[::-1]])
+    assert topology(tmp_path / 'a.npz') == topology(tmp_path / 'b.npz')
+    # A permutation of labeled nodes is NOT just edge orientation.
+    mapping = {0: 1, 1: 0, 2: 2, 3: 3, 4: 4}
+    np.savez(tmp_path / 'c.npz', graph_id='same', node_count=5,
+             edges=[(mapping[u], mapping[v]) for u, v in edges])
+    assert topology(tmp_path / 'a.npz') != topology(tmp_path / 'c.npz')
+
+
+@pytest.mark.parametrize('runtime', ['python', 'torch-geometric', 'networkx', 'scipy', 'PyYAML', 'numpy', 'torch'])
+def test_each_behavior_runtime_change_rejects_resume(tmp_path, monkeypatch, runtime):
+    import sys
+    from importlib import metadata
+    from tests.fixtures.temporal_independent import make_case
+    from diffusion_sources import temporal_independent_artifacts as a
+    paths = make_case(tmp_path)
+    a.freeze_inputs(paths)
+    if runtime == 'python':
+        monkeypatch.setattr(sys, 'version', sys.version + 'changed')
+    elif runtime in ('numpy', 'torch'):
+        monkeypatch.setattr(a.np if runtime == 'numpy' else a.torch, '__version__', 'changed')
+    else:
+        original = metadata.version
+        monkeypatch.setattr(metadata, 'version', lambda name: 'changed' if name == runtime else original(name))
+    with pytest.raises(ValueError, match='identity'):
+        a.verify_freeze(paths)
+    assert not (paths.reports / 'opened').exists()

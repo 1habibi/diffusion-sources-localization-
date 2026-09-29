@@ -27,8 +27,18 @@ Snapshot seed metadata ожидается в `data/facebook_snapshot_final_holdo
 Новые данные: `data/generated/facebook_temporal_v3_independent_holdout`.
 Отчёты: `reports/runs/temporal_v3_independent_evaluation/v1`.
 
+Raw-файл `REPO/data/raw/facebook_combined.txt.gz` не входит в Git.
+Перед freeze notebook при необходимости получает только исходный граф через
+существующий downloader из фиксированного SNAP-источника; существующий raw
+не заменяется. После рестарта проверяется raw SHA256 сохранённого freeze.
+При недоступности источника/несовпадении hash остановиться и восстановить
+свою исходную копию по выведенному пути. Это не генерация каскадов.
+
 Freeze проверяет hashes checkpoints/configs, исторических pilot/baseline
-артефактов, графа, raw edges, cache либо отсутствия cache, кода и runtime.
+артефактов, графа, raw edges, cache либо отсутствия cache, кода и runtime
+(Python, NumPy, PyTorch, PyG, NetworkX, SciPy, PyYAML). Новый topology hash
+использует канонические пары min/max labeled node ID; исторические
+feature/cache fingerprints не изменены.
 Seal читает только seeds и schema headers. Все stages append-only;
 частичная генерация или сохранение останавливают retry без перезаписи.
 Открытие записывается до первого evaluator target read. Обрыв после него
@@ -61,6 +71,15 @@ Early-only использует общий GCN count и аналитическо
 scoring/bootstrap и отдельную проверку настоящей GCN/PyG; expensive generator
 и replay/inference заменяются только на явных тестовых границах.
 
-Локальная проверка: `pytest -q` — 271 passed, 2 прежних предупреждения
-`torch.jit.script`, 317.80s. `compileall -q src scripts` и `git diff --check`
-прошли. Независимый whole-branch review выполняется перед интеграцией.
+Финальная локальная проверка: `pytest -q` — 285 passed, 2 прежних предупреждения
+`torch.jit.script`, 341.69s. `compileall -q src scripts` и `git diff --check`
+прошли. Независимый whole-branch review нашёл три Important: ориентация рёбер
+в raw/archive fingerprint, отсутствие raw в свежем clone, неполный runtime
+identity. Все три исправлены с RED→GREEN регрессиями (42 targeted tests)
+и полным зелёным прогоном 285 тестов. Critical/Minor замечаний нет.
+Ветка готова к решению пользователя об интеграции; merge/push не выполнены.
+
+Drive availability/совместимость артефактов проверяется настоящими freeze/seal
+выводами пользователя, не синтетическими fixture. GPU memory/time и качество
+неизвестны до реального запуска. Manifest обеспечивает локальную целостность
+в доверенном окружении, не защиту от умышленной подделки всех файлов/hashes.

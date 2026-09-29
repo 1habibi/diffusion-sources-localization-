@@ -46,6 +46,9 @@ def test_wrong_confirmation_never_runs_model():
 def test_freeze_never_generates_or_opens(tmp_path, capsys):
     from diffusion_sources.temporal_independent_artifacts import IndependentPaths
     calls = []
+    raw = tmp_path / 'data/raw/facebook_combined.txt.gz'
+    raw.parent.mkdir(parents=True)
+    raw.write_bytes(b'existing raw graph')
     def frozen(paths):
         calls.append('freeze')
         assert paths.reference == Path('/content/drive/MyDrive/diffusion-sources/data/facebook_main')
@@ -60,6 +63,45 @@ def test_freeze_never_generates_or_opens(tmp_path, capsys):
     exec(cells()['freeze'], ns)
     assert calls == ['freeze']
     assert 'dataset seed: 4007026' in capsys.readouterr().out
+
+
+@pytest.mark.parametrize('case', ['fresh', 'restart', 'unavailable'])
+def test_missing_raw_graph_provision_before_freeze(tmp_path, monkeypatch, case):
+    from diffusion_sources.temporal_independent_artifacts import IndependentPaths
+    from diffusion_sources import download
+    raw = tmp_path / 'repo/data/raw/facebook_combined.txt.gz'
+    drive_root = tmp_path / 'drive'
+    calls = []
+    if case == 'restart':
+        manifest = drive_root / 'reports/runs/temporal_v3_independent_evaluation/v1/freeze/manifest.json'
+        manifest.parent.mkdir(parents=True)
+        manifest.write_text(json.dumps({'identity': {'raw_graph': 'frozen-raw-sha'}}))
+    def provision(url, output, **kwargs):
+        calls.append(('raw', url, output, kwargs))
+        if case == 'unavailable': raise OSError('network unavailable')
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_bytes(b'raw graph boundary')
+    monkeypatch.setattr(download, 'download_file', provision)
+    def frozen(paths):
+        assert raw.is_file(), 'Fresh clone requires raw graph before freeze'
+        calls.append(('freeze',))
+        return {'role': 'parameter_artifact_freeze'}
+    def forbidden(*args): pytest.fail('No generation/open/inference')
+    ns = {'Path': lambda value: drive_root if str(value) == '/content/drive/MyDrive/diffusion-sources' else Path(value),
+          'REPO': tmp_path / 'repo', 'json': json,
+          'ARTIFACTS': SimpleNamespace(IndependentPaths=IndependentPaths, freeze_inputs=frozen),
+          'GENERATION': SimpleNamespace(generate_and_seal=forbidden),
+          'INFERENCE': SimpleNamespace(open_evaluation=forbidden, evaluate_seed=forbidden),
+          'SUMMARY': SimpleNamespace(save_summary=forbidden)}
+    if case == 'unavailable':
+        with pytest.raises(RuntimeError, match='facebook_combined.txt.gz'):
+            exec(cells()['freeze'], ns)
+        assert len(calls) == 1
+    else:
+        exec(cells()['freeze'], ns)
+        assert calls[0][1:3] == (download.FACEBOOK_URL, raw)
+        assert calls[0][3].get('expected_sha256') == ('frozen-raw-sha' if case == 'restart' else None)
+        assert calls[1] == ('freeze',)
 
 
 def test_setup_boundary_and_cache_refresh(tmp_path, monkeypatch, capsys):

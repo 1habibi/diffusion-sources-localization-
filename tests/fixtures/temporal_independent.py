@@ -26,17 +26,24 @@ def save_graph(root, changed=False):
     np.savez(root / 'graph.npz', graph_id='ego_facebook', node_count=10, edges=edges)
 
 
-def make_case(tmp_path, monkeypatch=None, absent_cache=False, real_checkpoint=False):
+def make_case(tmp_path, monkeypatch=None, absent_cache=False, real_checkpoint=False, node_count=10):
     from diffusion_sources.temporal_early_baseline import POLICY
     repo = tmp_path / 'repo'
     repo.mkdir()
     raw = repo / 'raw.txt'
-    raw.write_text(''.join(f'{i} {i+1}\n' for i in range(9)))
+    raw.write_text(''.join(f'{i} {i+1}\n' for i in range(node_count - 1)))
     config = generation_config(raw)
     cfg = repo / 'generation.yaml'
     cfg.write_text(yaml.safe_dump(config))
     reference, holdout, pilot, baseline = [tmp_path / x for x in ('reference', 'holdout', 'pilot', 'baseline')]
-    save_graph(reference)
+    if node_count == 10:
+        save_graph(reference)
+    else:
+        from diffusion_sources.generation import graph_from_config
+        graph_id, graph = graph_from_config(config['graph'])
+        reference.mkdir()
+        np.savez(reference / 'graph.npz', graph_id=graph_id,
+                 node_count=graph.number_of_nodes(), edges=list(graph.edges()))
     holdout.mkdir()
     old_cfg = json.loads(json.dumps(config))
     old_cfg['dataset'].update(seed=7026, splits={'train': 9990, 'validation': 1998, 'test': 1998})

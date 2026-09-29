@@ -5,12 +5,13 @@ from dataclasses import dataclass
 from pathlib import Path
 import json
 import hashlib
+import sys
+from importlib import metadata
 import numpy as np
 import torch
 import yaml
 
 from .dataset import load_graph_archive
-from .features import SnapshotFeatureBuilder
 from .generation import graph_from_config
 from .temporal_pilot_artifacts import read_stage, write_stage, sha256_file
 from .temporal_pilot_cli import _identity, _code_identity, _comparable
@@ -66,8 +67,23 @@ def load_yaml(path: Path) -> dict:
 
 def topology(path: Path) -> dict:
     graph_id, graph = load_graph_archive(path)
-    builder = SnapshotFeatureBuilder(graph)
-    return {'id': graph_id, 'nodes': builder.node_count, 'edges': builder.graph_fingerprint}
+    return _graph_topology(graph_id, graph)
+
+
+def _graph_topology(graph_id, graph) -> dict:
+    nodes = sorted(graph.nodes())
+    if nodes != list(range(len(nodes))) or graph.is_directed():
+        raise ValueError('Topology requires contiguous labeled undirected nodes.')
+    # Authentication only: historical feature/cache fingerprints stay untouched.
+    edges = np.asarray(sorted((min(u, v), max(u, v)) for u, v in graph.edges()),
+                       dtype='<i8').reshape(-1, 2)
+    return {'id': graph_id, 'nodes': len(nodes), 'edges': hashlib.sha256(edges.tobytes()).hexdigest(),
+            'policy': 'canonical-labelled-undirected-v1'}
+
+
+def _runtime_versions() -> dict:
+    return {'python': sys.version, 'numpy': np.__version__, 'torch': torch.__version__,
+            **{name: metadata.version(name) for name in ('torch-geometric', 'networkx', 'scipy', 'PyYAML')}}
 
 
 def reference_archives(paths: IndependentPaths) -> list[Path]:
@@ -99,9 +115,8 @@ def _freeze_identity(paths: IndependentPaths) -> dict:
     archives = reference_archives(paths)
     metadata_seed_union(archives)  # Target-blind schema validation.
     frozen_topology = topology(paths.reference / 'graph.npz')
-    _, raw_graph = graph_from_config({**cfg['graph'], 'path': str(raw)})
-    raw_builder = SnapshotFeatureBuilder(raw_graph)
-    if raw_builder.node_count != frozen_topology['nodes'] or raw_builder.graph_fingerprint != frozen_topology['edges']:
+    raw_id, raw_graph = graph_from_config({**cfg['graph'], 'path': str(raw)})
+    if _graph_topology(raw_id, raw_graph) != frozen_topology:
         raise ValueError('Raw/reference graph topology mismatch.')
     selection_id, selection = _historical(paths.pilot, 'select')
     if selection['beta'] != .5 or selection['n'] != 540:
@@ -168,7 +183,7 @@ def _freeze_identity(paths: IndependentPaths) -> dict:
             'reference_archives': {str(p.resolve()): sha256_file(p) for p in archives},
             'generation_config': sha256_file(gen_path), 'raw_graph': sha256_file(raw),
             'topology': frozen_topology, 'code': _code_identity(),
-            'versions': {'numpy': np.__version__, 'torch': torch.__version__},
+            'versions': _runtime_versions(),
             'paths': {'data': str(paths.data.resolve()), 'reports': str(paths.reports.resolve())},
             'protocol': {'beta': .5, 'seeds': list(SEEDS), 't1': 1, 'max_steps': 3,
                          'dataset_seed': 4007026, 'n': 1998,
