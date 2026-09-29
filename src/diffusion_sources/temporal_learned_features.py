@@ -71,7 +71,13 @@ class LinearHead:
             raise ValueError('Head scale and C must be positive; parameters must be finite')
 
     def to_dict(self):
-        return asdict(self)
+        payload = asdict(self)
+        payload['feature_names'] = list(self.feature_names)
+        for name in ('mean', 'scale', 'coefficients'):
+            payload[name] = list(map(float, getattr(self, name)))
+        payload['intercept'] = float(self.intercept)
+        payload['C'] = float(self.C)
+        return payload
 
     @classmethod
     def from_dict(cls, payload):
