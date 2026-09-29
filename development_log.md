@@ -2,6 +2,46 @@
 
 Этот файл кратко фиксирует ход разработки системы идентификации нескольких источников информационной диффузии. Его следует дополнять после завершения каждого существенного этапа. Материал предназначен для последующей подготовки проектной и практической глав ВКР.
 
+## 2026-09-29: дешёвый обучаемый ранжировщик (exploratory)
+
+В изолированной ветке `codex/temporal-learned-reranker` добавлены шесть target-blind
+признаков, JSON linear head, authenticated numeric cache, read-only collector,
+fit-only scaling и cascade/class weights, три фиксированных C без refit, парные
+gates относительно Temporal-v3, guarded CLI и восьмиэтапный notebook с видимым
+выводом. Принятые GCN/count-head/candidate set, app.py и thesis_report не менялись.
+
+Поэтапные полные проверки: 322 passed (346.76 s), затем 351 passed (333.31 s),
+в обоих случаях два прежних torch.jit deprecation warnings. Для последних
+CLI/notebook сценариев отдельно прошли 16 тестов (19.82 s). Полная проверка дала
+367 passed (443.42 s), а после дополнительных RED→GREEN проверок object-массивов
+и near-tie выбора C — **371 passed**, два прежних предупреждения, 391.34 s.
+Synthetic gate pass не является метрикой настоящей модели. Начат один независимый
+whole-branch review; актуальная ветка ещё не интегрирована.
+
+Review нашёл три Important: неучтённый optional distance cache, пропущенные общие
+source dependencies и отсутствие deadline между оценочными каскадами. Семь новых
+регрессионных случаев сначала упали; после исправлений 52 targeted tests прошли.
+Полный suite после единственного fix pass: **378 passed**, два прежних warnings,
+384.74 s. Повторный независимый review не запускался; исправления подтверждены
+автором через RED→GREEN/full suite. Critical/Minor не было. Решения и ограничения
+в `docs/temporal_learned_reranker_verification.md`.
+
+Настоящий read-only CPU smoke6 прошёл за 9.797 s; replay/beta0/cardinality/schema
+проверены. Хэши 10 защищённых файлов до/после совпали. Результат local_smoke_v2:
+предыдущая попытка local_smoke_v1 рассчитала шесть примеров, но Windows sandbox
+запретил публикацию временного JSON; partial не перезаписывался. Простая
+экстраполяция 58.8 min включает fixed costs и не заменяет замер cache2160.
+Реальные cache2160, fit/select, validation и новые независимые оценки не выполнялись.
+Ветка не merged/pushed; новая модель не объявляется улучшением до эксперимента.
+Все восемь задач реализации завершены; Task8 закрыта повторным полным suite
+сохранённой ветки: 378 passed, два прежних warnings, 352.64 s.
+
+Финальный smoke после review — новый append-only `local_smoke_v3`: **6.579 s**,
+ровно шесть настоящих train-примеров, `training_performed=false`, тот же full early
+mask hash; 10 защищённых хэшей опять совпали. Rough cache2160 projection 39.5 min
+включает fixed load costs и CPU competition, не измеряет полный cache. Следующий
+реальный smoke — в Colab T4, STOP до ячейки 4; реальный fit требует согласования.
+
 ## 1. Постановка задачи
 
 В качестве основной выбрана многоисточниковая постановка. По известному графу социальной сети и неполному снимку распространения требуется:

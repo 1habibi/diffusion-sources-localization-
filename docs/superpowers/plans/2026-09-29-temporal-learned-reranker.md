@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python, NumPy, NetworkX, PyTorch/PyG, scikit-learn, PyYAML, tqdm, pytest; существующие зависимости, без новых библиотек.
 
-**Spec:** [Утверждённый дизайн](../specs/2026-09-29-temporal-learned-reranker-design.md). Пользователь одобрил письменный дизайн сообщением «го»; этот implementation plan ещё ожидает просмотра и выбора способа выполнения.
+**Spec:** [Утверждённый дизайн](../specs/2026-09-29-temporal-learned-reranker-design.md). Пользователь одобрил дизайн и Native/inline исполнение этого плана. Реализация выполняется в `codex/temporal-learned-reranker`; реальный cache/fit согласуется отдельно.
 
 ## Global Constraints
 

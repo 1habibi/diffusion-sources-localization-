@@ -114,6 +114,12 @@ Workflow последовательно выполняет генерацию д
 
 ## Google Colab
 
+Для нового **exploratory** обучаемого ранжировщика поверх frozen Temporal-v3:
+[пошаговый notebook](notebooks/colab_temporal_learned_reranker.ipynb) и
+[статус, ограничения и пояснения метрик](docs/temporal_learned_reranker_status.md).
+Сначала ячейки 1–3 (код/пути/smoke), затем STOP до согласования cache/fit.
+Принятая v3 не заменяется; test/holdout этот пилот не открывает.
+
 Завершенные Facebook-эксперименты `v1_baseline` выполнялись на GPU через `notebooks/colab_training.ipynb`. Для последовательных validation-only абляций `snapshot-v2` создан отдельный `notebooks/colab_training_snapshot_v2.ipynb`; он не заменяет и не перезаписывает сценарий `v1`. Подробная инструкция, структура Drive и правила resume описаны в `docs/colab_training.md`. Все существующие training-конфигурации вне `configs/snapshot_v2/` считаются конфигурациями `v1` или его пилотов, если явно не указано иное.
 
 ## Материалы для диплома: независимая оценка Temporal-v3
