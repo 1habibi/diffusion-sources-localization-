@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "exploratory": true,
+  "beta": 0.5,
+  "t1": 1,
+  "fit_n": 1620,
+  "dev_n": 540,
+  "train_n": 9990,
+  "validation_n": 1998,
+  "C_grid": [0.1, 1.0, 10.0],
+  "budget_seconds": 1800,
+  "bootstrap_repetitions": 2000,
+  "bootstrap_seed": 9282026,
+  "minimum_delta_f1": 0.02,
+  "maximum_subgroup_decline": 0.02,
+  "feature_names": ["gcn_probability", "early_observed", "early_neighbor_fraction", "final_neighbor_fraction", "log_degree_normalized", "gcn_probability_x_early"],
+  "expected_inputs": {
+    "graph.npz": "5094d773d06e1a17d14ebc73d734f420106819ac740433f6d006be564d173658",
+    "config.yaml": "564b9221b1d70d8c70bebbce2cdb6835da8070597c7230a11bf218c42a12fc82",
+    "train.npz": "ae22af3162feb65850c5e045cd9f2ccaa7b835fda01c2ce0c8a5445ee686b86c",
+    "validation.npz": "535e1caf81a07ca060b514127e784778b8afb17e38a0295ddf650910302abcb6",
+    "runs": {
+      "7026": {"config.yaml": "6ed97053b20698ed7b13e08c15565a9d81f5a71641bfd0958d945d8f3a612b9e", "best_model.pt": "8b32b43a7a6bcd3dbd743b82bf62c51331990f07045a7781791eefdbf40e33e4", "metrics.json": "6870c89b35bce9f8bf9f637f5977bcef260f7aafa72cfe2a35edcd1f96230458"},
+      "7027": {"config.yaml": "3785132a2d89b7b743294d0de1eec6031886a51636e7d5d8981d3cbf1d609420", "best_model.pt": "63377b1356fb13bc1a44160efda712f8c9ea4a2bc4dff7a8f810dc9f3f6c35d2", "metrics.json": "e25c61722b514f1531e0c9fb4e11ec2b5d8d6fb1f728e715cbb8a47f28f164b8"},
+      "7028": {"config.yaml": "23962d8b00cfdb6995eabc372dbe0ce269d77ec31ccc7178ace0fe41856c649f", "best_model.pt": "ad33de80d7da9b07325246d3eaff89c60f7545e00cc9da933373ddd98e7166b8", "metrics.json": "449383f3189aa4baf02e8fee18dbe650cf682bfeae3f18cfc148cc3dfabca0d2"}
+    }
+  }
+}

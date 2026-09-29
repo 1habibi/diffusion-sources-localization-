@@ -99,3 +99,7 @@ def test_rank_ties_and_cardinality():
 def test_target_free_signatures():
     for fn in (build_candidate_features, rank_candidates):
         assert not {'labels', 'true_k', 'source_labels', 'infection_times', 'seed'} & set(inspect.signature(fn).parameters)
+
+
+def test_feature_names_follow_approved_schema():
+    assert FEATURE_NAMES[-1] == 'gcn_probability_x_early'

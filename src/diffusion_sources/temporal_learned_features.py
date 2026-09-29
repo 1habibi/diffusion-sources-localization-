@@ -6,7 +6,7 @@ import numpy as np
 
 FEATURE_NAMES = (
     'gcn_probability', 'early_observed', 'early_neighbor_fraction',
-    'final_neighbor_fraction', 'log_degree_normalized', 'probability_times_early',
+    'final_neighbor_fraction', 'log_degree_normalized', 'gcn_probability_x_early',
 )
 
 
