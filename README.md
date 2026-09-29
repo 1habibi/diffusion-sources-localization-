@@ -117,6 +117,7 @@ Workflow последовательно выполняет генерацию д
 Для нового **exploratory** обучаемого ранжировщика поверх frozen Temporal-v3:
 [пошаговый notebook](notebooks/colab_temporal_learned_reranker.ipynb) и
 [статус, ограничения и пояснения метрик](docs/temporal_learned_reranker_status.md).
+Для запуска по номерам ячеек: [инструкция Colab](docs/colab_temporal_learned_reranker.md).
 Сначала ячейки 1–3 (код/пути/smoke), затем STOP до согласования cache/fit.
 Принятая v3 не заменяется; test/holdout этот пилот не открывает.
 
