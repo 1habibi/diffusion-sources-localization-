@@ -1,0 +1,258 @@
+{
+  "evaluation_role": "independent_confirmation",
+  "exploratory": false,
+  "bootstrap_n": 1998,
+  "bootstrap": {
+    "repetitions": 2000,
+    "seed": 9282026,
+    "strata": "true_k",
+    "aggregation": "mean three seed deltas per cascade before resampling"
+  },
+  "beta": 0.5,
+  "seeds": [
+    7026,
+    7027,
+    7028
+  ],
+  "count_unchanged": true,
+  "means": {
+    "snapshot_f1": 0.3441830719608497,
+    "early_expected_f1": 0.43487231350205374,
+    "temporal_f1": 0.5237404070737403,
+    "temporal_minus_snapshot": 0.17955733511289065,
+    "temporal_minus_early": 0.08886809357168668
+  },
+  "sample_sd": {
+    "snapshot_f1": 0.0034776015251981964,
+    "early_expected_f1": 0.0046957286341623265,
+    "temporal_f1": 0.0016939146777908817,
+    "temporal_minus_snapshot": 0.0018099192243437032,
+    "temporal_minus_early": 0.004433613051838503
+  },
+  "primary": {
+    "delta_f1": 0.17955733511289065,
+    "ci": [
+      0.16687117673228785,
+      0.19204857635413192
+    ],
+    "per_seed_delta": {
+      "7026": 0.17911244577911245,
+      "7027": 0.18154821488154818,
+      "7028": 0.17801134467801133
+    },
+    "delta_by_k": {
+      "1": 0.29654654654654655,
+      "2": 0.12384050717384051,
+      "3": 0.11828495161828495
+    },
+    "passed": true,
+    "reasons": []
+  },
+  "secondary": {
+    "delta_f1": 0.08886809357168667,
+    "ci": [
+      0.0785267574749199,
+      0.09886911922292396
+    ],
+    "per_seed_delta": {
+      "7026": 0.08435403192060235,
+      "7027": 0.08903362726572467,
+      "7028": 0.093216621528733
+    },
+    "passed": true,
+    "reasons": []
+  },
+  "metrics": {
+    "snapshot": {
+      "mean": {
+        "count_accuracy": 0.7068735402068734,
+        "count_mae": 0.3720387053720387,
+        "exact_set_accuracy": 0.06956956956956957,
+        "f1": 0.3441830719608497,
+        "hit_at_1_hop": 0.5146535424313202,
+        "hit_at_2_hop": 0.9337671004337671,
+        "precision": 0.36088866644422196,
+        "recall": 0.3426482037593148,
+        "set_to_source_distance": 1.0721832944055167,
+        "source_to_set_distance": 1.2412690468246026,
+        "symmetric_set_distance": 1.1567261706150596
+      },
+      "sample_sd": {
+        "count_accuracy": 0.06085216184779992,
+        "count_mae": 0.06660669486232218,
+        "exact_set_accuracy": 0.011313968523981295,
+        "f1": 0.0034776015251981964,
+        "hit_at_1_hop": 0.0215522689141924,
+        "hit_at_2_hop": 0.007453556190753647,
+        "precision": 0.0029140198298335113,
+        "recall": 0.005115925094920219,
+        "set_to_source_distance": 0.012318689367160874,
+        "source_to_set_distance": 0.03523390944218424,
+        "symmetric_set_distance": 0.023668660691736128
+      }
+    },
+    "temporal": {
+      "mean": {
+        "count_accuracy": 0.7068735402068734,
+        "count_mae": 0.3720387053720387,
+        "exact_set_accuracy": 0.22789456122789456,
+        "f1": 0.5237404070737403,
+        "hit_at_1_hop": 0.8209598487376265,
+        "hit_at_2_hop": 0.9403848292737181,
+        "precision": 0.5475475475475475,
+        "recall": 0.5292236681125569,
+        "set_to_source_distance": 0.5320320320320321,
+        "source_to_set_distance": 0.7417417417417417,
+        "symmetric_set_distance": 0.636886886886887
+      },
+      "sample_sd": {
+        "count_accuracy": 0.06085216184779992,
+        "count_mae": 0.06660669486232218,
+        "exact_set_accuracy": 0.014308829924852568,
+        "f1": 0.0016939146777908817,
+        "hit_at_1_hop": 0.021171482310952363,
+        "hit_at_2_hop": 0.009853892321370348,
+        "precision": 0.009056769801895199,
+        "recall": 0.007678118010751464,
+        "set_to_source_distance": 0.012290319477285969,
+        "source_to_set_distance": 0.038444263411614235,
+        "symmetric_set_distance": 0.02228285306388978
+      }
+    }
+  },
+  "per_seed": {
+    "7026": {
+      "means": {
+        "snapshot_f1": 0.34549549549549546,
+        "early_expected_f1": 0.4402539093540056,
+        "temporal_f1": 0.5246079412746079,
+        "temporal_minus_snapshot": 0.17911244577911245,
+        "temporal_minus_early": 0.08435403192060235
+      },
+      "snapshot_ci": [
+        0.16486444778111442,
+        0.19319402736069402
+      ],
+      "early_ci": [
+        0.07229262582670824,
+        0.09666181007741804
+      ]
+    },
+    "7027": {
+      "means": {
+        "snapshot_f1": 0.34024024024024024,
+        "early_expected_f1": 0.4327548278560638,
+        "temporal_f1": 0.5217884551217884,
+        "temporal_minus_snapshot": 0.18154821488154818,
+        "temporal_minus_early": 0.08903362726572467
+      },
+      "snapshot_ci": [
+        0.16721304637971304,
+        0.19628003003003003
+      ],
+      "early_ci": [
+        0.07751060692299519,
+        0.10034474988225967
+      ]
+    },
+    "7028": {
+      "means": {
+        "snapshot_f1": 0.3468134801468135,
+        "early_expected_f1": 0.4316082032960918,
+        "temporal_f1": 0.5248248248248247,
+        "temporal_minus_snapshot": 0.17801134467801133,
+        "temporal_minus_early": 0.093216621528733
+      },
+      "snapshot_ci": [
+        0.16296254587921252,
+        0.19272731064397733
+      ],
+      "early_ci": [
+        0.08059122913840025,
+        0.10505244846324865
+      ]
+    }
+  },
+  "by_k": {
+    "1": {
+      "n_per_seed": 666,
+      "snapshot_f1": 0.11044377711044377,
+      "early_expected_f1": 0.3794498770941734,
+      "temporal_f1": 0.4069903236569903,
+      "temporal_minus_snapshot": 0.29654654654654655,
+      "temporal_minus_early": 0.027540446562816946
+    },
+    "2": {
+      "n_per_seed": 666,
+      "snapshot_f1": 0.4212045378712045,
+      "early_expected_f1": 0.45152172418113173,
+      "temporal_f1": 0.545045045045045,
+      "temporal_minus_snapshot": 0.12384050717384051,
+      "temporal_minus_early": 0.09352332086391331
+    },
+    "3": {
+      "n_per_seed": 666,
+      "snapshot_f1": 0.500900900900901,
+      "early_expected_f1": 0.47364533923085606,
+      "temporal_f1": 0.6191858525191858,
+      "temporal_minus_snapshot": 0.11828495161828495,
+      "temporal_minus_early": 0.14554051328832976
+    }
+  },
+  "by_candidates": {
+    "1-10": {
+      "n_per_seed": 839,
+      "snapshot_f1": 0.43678982916170045,
+      "early_expected_f1": 0.5096847363851733,
+      "temporal_f1": 0.5898821348165805,
+      "temporal_minus_snapshot": 0.15309230565488016,
+      "temporal_minus_early": 0.08019739843140716
+    },
+    "11-20": {
+      "n_per_seed": 490,
+      "snapshot_f1": 0.3407256235827664,
+      "early_expected_f1": 0.43932781779727137,
+      "temporal_f1": 0.5317006802721088,
+      "temporal_minus_snapshot": 0.19097505668934242,
+      "temporal_minus_early": 0.09237286247483749
+    },
+    "21-50": {
+      "n_per_seed": 438,
+      "snapshot_f1": 0.2656012176560122,
+      "early_expected_f1": 0.36419474929262713,
+      "temporal_f1": 0.47511415525114153,
+      "temporal_minus_snapshot": 0.20951293759512934,
+      "temporal_minus_early": 0.11091940595851446
+    },
+    "51+": {
+      "n_per_seed": 231,
+      "snapshot_f1": 0.16416546416546415,
+      "early_expected_f1": 0.28771193783164173,
+      "temporal_f1": 0.3588263588263588,
+      "temporal_minus_snapshot": 0.19466089466089462,
+      "temporal_minus_early": 0.07111442099471711
+    }
+  },
+  "early_coverage": {
+    "7026": {
+      "source_recall": 0.737987987987988,
+      "all_source_fraction": 0.6156156156156156,
+      "empty_fraction": 0.024524524524524523
+    },
+    "7027": {
+      "source_recall": 0.737987987987988,
+      "all_source_fraction": 0.6156156156156156,
+      "empty_fraction": 0.024524524524524523
+    },
+    "7028": {
+      "source_recall": 0.737987987987988,
+      "all_source_fraction": 0.6156156156156156,
+      "empty_fraction": 0.024524524524524523
+    }
+  },
+  "dataset_hash": "b79df4b7bdc2966baaee3a92bf0eea361026362808c3f4587a3d4921e4455950",
+  "freeze_hash": "bb3468af0d0dbc0b9b5f0e37c502bcfda98495f0894290ec1e728b440d0f0e86",
+  "early_mask_hash": "f0e26ba6f2b9c05c2b9527e3f31d5baa0131d93820be21f4c3d2e2e3647e9ea7",
+  "early_baseline_uses_gcn_count": true,
+  "interpretation": "Independent new IC cascades on the same known Facebook topology; no transfer claim. CI conditional on graph/protocol/three frozen checkpoints; subgroup tables descriptive. Early-only uses shared learned count, ties analytically integrated; no early geometry. Negative results retained without retuning; no best-seed selection."
+}

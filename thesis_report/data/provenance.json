@@ -1,0 +1,14 @@
+{
+  "prepared_on": "2026-09-29",
+  "evaluation_role": "independent_confirmation",
+  "summary_drive_url": "https://drive.google.com/file/d/115IOLkM4ZppvOvXu0riorPz5u_LwevCH/view",
+  "manifest_drive_url": "https://drive.google.com/file/d/1sm0AuL4IyHC7ackTSNOM-BEwHO_Nqu2T/view",
+  "summary_relative_path": "thesis_report/data/independent_summary.json",
+  "summary_sha256": "980e20c405503cde35ff8f89db934989c994390fd3d203db73b15ac303328030",
+  "summary_size_bytes": 8345,
+  "evaluation_code_revision": "ef56aeefa80bb5b7237bc6bfac69ed76fab1a6a8",
+  "verification_scope": "Original summary downloaded from Google Drive; SHA-256 matches summary manifest. Metrics and aggregation definitions inspected in repository. Per-cascade predictions were not independently re-evaluated during report preparation.",
+  "dataset_hash": "b79df4b7bdc2966baaee3a92bf0eea361026362808c3f4587a3d4921e4455950",
+  "freeze_hash": "bb3468af0d0dbc0b9b5f0e37c502bcfda98495f0894290ec1e728b440d0f0e86",
+  "early_mask_hash": "f0e26ba6f2b9c05c2b9527e3f31d5baa0131d93820be21f4c3d2e2e3647e9ea7"
+}

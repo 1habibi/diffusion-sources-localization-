@@ -86,3 +86,42 @@ Drive availability/совместимость артефактов провер�
 выводами пользователя, не синтетическими fixture. GPU memory/time и качество
 неизвестны до реального запуска. Manifest обеспечивает локальную целостность
 в доверенном окружении, не защиту от умышленной подделки всех файлов/hashes.
+
+## Полученный независимый результат — 2026-09-29
+
+Этот раздел обновляет состояние выше: master опубликован (`ef56aee`, PR #1
+merged), пользователь завершил freeze/seal, explicit open, три seed и summary.
+Первоначальный источник — присланные Colab outputs. При подготовке отчёта
+29.09.2026 оригинальный summary/payload.json скачан с Drive; SHA-256
+980e20c405503cde35ff8f89db934989c994390fd3d203db73b15ac303328030
+совпал с summary manifest. Копия: thesis_report/data/independent_summary.json.
+Per-cascade CSV/предсказания при оформлении независимо не пересчитывались.
+
+Все 1998 новых IC-каскадов оценены каждым checkpoint без обучения/retuning.
+Оба заранее заданных gates прошли; count_unchanged=true.
+
+| Метод | Mean F1 | Sample SD по seeds |
+|---|---:|---:|
+| Snapshot | 0.344183 | 0.003478 |
+| Early-only expected | 0.434872 | 0.004696 |
+| Temporal | 0.523740 | 0.001694 |
+
+Temporal−snapshot: +0.179557, paired bootstrap 95% CI [0.166871, 0.192049].
+Temporal−early: +0.088868, CI [0.078527, 0.098869]. Оба контраста положительны
+на всех seeds. Bootstrap сначала усредняет три deltas для каждого каскада,
+затем resamples 1998 каскадов со strata true-k; не 5994 независимых примера.
+
+Exact-set: 6.96%→22.79%; Hit@1-hop: 51.47%→82.10%; symmetric distance:
+1.156726→0.636887. Count accuracy неизменна: 70.69%.
+Temporal F1 по k=1/2/3: 0.406990/0.545045/0.619186; при 51+ кандидатах
+0.358826. Разрезы описательные, subgroup significance не заявляется.
+
+Dataset hash: `b79df4b7bdc2966baaee3a92bf0eea361026362808c3f4587a3d4921e4455950`.
+Freeze hash: `bb3468af0d0dbc0b9b5f0e37c502bcfda98495f0894290ec1e728b440d0f0e86`.
+Summary: `reports/runs/temporal_v3_independent_evaluation/v1/summary/payload.json`.
+
+Это подтверждение на новых каскадах прежнего графа/генератора, не перенос на
+новую топологию. Snapshot не имеет раннего наблюдения; early-only контроль
+использует общую GCN count-head и uniform ties, не все возможные эвристики.
+Набор после открытия не заменять, параметры по нему не подбирать.
+Новых запусков и публикации этой документальной записи не выполнялось.
