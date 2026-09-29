@@ -15,11 +15,15 @@ BINS = ('1-10', '11-20', '21-50', '51+')
 TOL = 1e-12
 
 
-def evaluate_reranker(table, head, graph, *, include_ci):
+def evaluate_reranker(table, head, graph, *, include_ci, budget=None):
+    if budget is not None:
+        budget.check()
     validate_table(table)
     rows = []
     count_ok = cardinality_ok = True
     for j in tqdm(range(len(table.indices)), desc='Learned-v3 paired metrics', unit='cascade'):
+        if budget is not None:
+            budget.check()
         a,b = table.offsets[j:j+2]
         ids = tuple(map(int,table.candidate_ids[a:b]))
         truth = frozenset(i for i,label in zip(ids,table.labels[a:b]) if label)
@@ -37,6 +41,8 @@ def evaluate_reranker(table, head, graph, *, include_ci):
             predicted_count=k, candidate_count=len(ids), candidate_ids=list(ids),
             true_sources=sorted(truth), early_empty=bool(table.early_empty[j]),
             **{f'{name}_sources':sorted(s) for name,s in predicted.items()}, **metrics))
+        if budget is not None:
+            budget.check()
 
     def aggregate(name, subset):
         return {'n':len(subset), 'status':'evaluated' if subset else 'not_applicable',
@@ -55,7 +61,11 @@ def evaluate_reranker(table, head, graph, *, include_ci):
         result[f'delta_by_{group}'] = {key:result['learned'][f'by_{group}'][key]['f1']-base['f1'] if base['n'] else None
             for key,base in result['v3'][f'by_{group}'].items()}
     if include_ci:
+        if budget is not None:
+            budget.check()
         result['f1_ci'] = list(paired_bootstrap_ci(np.array([r['learned']['f1']-r['v3']['f1'] for r in rows]),np.array([r['k'] for r in rows])))
+    if budget is not None:
+        budget.check()
     return result
 
 
@@ -100,7 +110,9 @@ def check_saved_snapshot_f1(report, run_metrics, *, tolerance=1e-6):
         raise ValueError('Invalid saved snapshot metric schema') from exc
 
 
-def summarize_repeats(reports):
+def summarize_repeats(reports, *, budget=None):
+    if budget is not None:
+        budget.check()
     if len(reports)!=3 or {r.get('seed') for r in reports}!={7026,7027,7028}:
         raise ValueError('Exactly three distinct frozen seeds are required')
     reports=sorted(reports,key=lambda r:r['seed'])
@@ -118,7 +130,11 @@ def summarize_repeats(reports):
     deltas=np.array([[row['learned']['f1']-row['v3']['f1'] for row in r['rows']] for r in reports])
     per_case=deltas.mean(axis=0)
     k=np.array([r['k'] for r in first['rows']])
+    if budget is not None:
+        budget.check()
     ci=list(paired_bootstrap_ci(per_case,k))
+    if budget is not None:
+        budget.check()
     names=('snapshot','v3','learned')
     means={name:{metric:float(np.mean([r[name]['all'][metric] for r in reports])) for metric in first[name]['all'] if metric not in ('n','status')} for name in names}
     sd={name:{metric:float(np.std([r[name]['all'][metric] for r in reports],ddof=1)) for metric in means[name]} for name in names}

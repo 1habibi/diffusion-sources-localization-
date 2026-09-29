@@ -78,7 +78,7 @@ def select_head(fit,dev,graph,*,budget_seconds=1800):
         print(f'Fit C={C:g}: {len(fit.indices)} cascades, {len(fit.labels)} candidate rows',flush=True)
         h=fit_head(fit,C)
         budget.check()
-        report=evaluate_reranker(dev,h,graph,include_ci=False)
+        report=evaluate_reranker(dev,h,graph,include_ci=False,budget=budget)
         budget.check()
         candidates.append(dict(C=C,report=report,elapsed_seconds=time.monotonic()-start,effective_parameters=effective_parameters(C)))
         heads.append(h)

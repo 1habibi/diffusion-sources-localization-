@@ -44,6 +44,25 @@ def stage(cli_case,name):
     return run_stage(name,cli_case[0],torch.device('cpu'))
 
 
+def test_evaluation_timeout_prevents_validation_publication(cli_case,monkeypatch):
+    from diffusion_sources import temporal_learned_evaluation as evaluation
+    from diffusion_sources.temporal_learned_collect import Budget
+    prepare_selection(cli_case)
+    clock=[0.]
+    monkeypatch.setattr('time.monotonic',lambda:clock[0])
+    monkeypatch.setattr('diffusion_sources.temporal_learned_cli.Budget',lambda seconds:Budget(1))
+    original=evaluation.set_metrics
+    calls=[]
+    def timed(*args):
+        calls.append(1); clock[0]+=.4
+        return original(*args)
+    monkeypatch.setattr(evaluation,'set_metrics',timed)
+    with pytest.raises(TimeoutError):
+        stage(cli_case,'validate')
+    assert len(calls)==3
+    assert not (cli_case[0].output_dir/'validation').exists()
+
+
 def prepare_selection(cli_case):
     for name in ('smoke','cache','select'):
         result=stage(cli_case,name)

@@ -46,6 +46,7 @@ def test_identity_runtime_device_and_input_change(tmp_path, monkeypatch):
     for path in (data/'graph.npz', data/'config.yaml', data/'train.npz',
                  run/'config.yaml', run/'best_model.pt'):
         path.write_bytes(b'fixture')
+    (run/'config.yaml').write_text('data: {}\n')
     a = cache_identity(data, run, 'train', [0, 1], torch.device('cpu'))
     b = cache_identity(data, run, 'train', [0, 1], torch.device('cuda:0'))
     assert a != b
@@ -93,3 +94,45 @@ def test_object_arrays_rejected_before_cache_write(name, tmp_path):
     with pytest.raises(ValueError,match='binary'):
         save_cache(tmp_path,'objects',{},table)
     assert not (tmp_path/'objects').exists()
+
+
+def test_distance_dependency_presence_content_and_resume(tmp_path):
+    data,run=tmp_path/'data',tmp_path/'run'
+    data.mkdir(); run.mkdir()
+    distance=tmp_path/'distances.npz'
+    for path in (data/'graph.npz',data/'config.yaml',data/'train.npz',run/'best_model.pt'):
+        path.write_bytes(b'fixture')
+    (run/'config.yaml').write_text('data:\n  distance_cache: '+distance.as_posix()+'\n')
+    def identity():
+        return cache_identity(data,run,'train',[0],torch.device('cpu'))
+    absent=identity()
+    save_cache(tmp_path/'results','train',absent,tiny_table())
+    distance.write_bytes(b'first distance matrix')
+    present=identity()
+    assert present!=absent
+    with pytest.raises(ValueError):
+        load_cache(tmp_path/'results','train',present)
+    distance.write_bytes(b'second distance matrix')
+    assert identity()!=present
+    distance.unlink()
+    assert identity()==absent
+
+
+@pytest.mark.parametrize('module',['diffusion.py','observations.py','metrics.py','temporal_statistics.py'])
+def test_shared_source_change_rejects_resume(module,tmp_path,monkeypatch):
+    from pathlib import Path
+    data,run=tmp_path/'data',tmp_path/'run'
+    data.mkdir(); run.mkdir()
+    for path in (data/'graph.npz',data/'config.yaml',data/'train.npz',run/'best_model.pt'):
+        path.write_bytes(b'fixture')
+    (run/'config.yaml').write_text('data: {}\n')
+    before=cache_identity(data,run,'train',[0],torch.device('cpu'))
+    save_cache(tmp_path/'results','train',before,tiny_table())
+    original=Path.read_bytes
+    def changed(path):
+        value=original(path)
+        return value+b'\n# simulated code update\n' if path.name==module else value
+    monkeypatch.setattr(Path,'read_bytes',changed)
+    after=cache_identity(data,run,'train',[0],torch.device('cpu'))
+    with pytest.raises(ValueError):
+        load_cache(tmp_path/'results','train',after)

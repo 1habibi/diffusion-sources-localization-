@@ -18,6 +18,14 @@ CLI/notebook сценариев отдельно прошли 16 тестов (1
 Synthetic gate pass не является метрикой настоящей модели. Начат один независимый
 whole-branch review; актуальная ветка ещё не интегрирована.
 
+Review нашёл три Important: неучтённый optional distance cache, пропущенные общие
+source dependencies и отсутствие deadline между оценочными каскадами. Семь новых
+регрессионных случаев сначала упали; после исправлений 52 targeted tests прошли.
+Полный suite после единственного fix pass: **378 passed**, два прежних warnings,
+384.74 s. Повторный независимый review не запускался; исправления подтверждены
+автором через RED→GREEN/full suite. Critical/Minor не было. Решения и ограничения
+в `docs/temporal_learned_reranker_verification.md`.
+
 Настоящий read-only CPU smoke6 прошёл за 9.797 s; replay/beta0/cardinality/schema
 проверены. Хэши 10 защищённых файлов до/после совпали. Результат local_smoke_v2:
 предыдущая попытка local_smoke_v1 рассчитала шесть примеров, но Windows sandbox
@@ -25,6 +33,12 @@ whole-branch review; актуальная ветка ещё не интегри�
 экстраполяция 58.8 min включает fixed costs и не заменяет замер cache2160.
 Реальные cache2160, fit/select, validation и новые независимые оценки не выполнялись.
 Ветка не merged/pushed; новая модель не объявляется улучшением до эксперимента.
+
+Финальный smoke после review — новый append-only `local_smoke_v3`: **6.579 s**,
+ровно шесть настоящих train-примеров, `training_performed=false`, тот же full early
+mask hash; 10 защищённых хэшей опять совпали. Rough cache2160 projection 39.5 min
+включает fixed load costs и CPU competition, не измеряет полный cache. Следующий
+реальный smoke — в Colab T4, STOP до ячейки 4; реальный fit требует согласования.
 
 ## 1. Постановка задачи
 

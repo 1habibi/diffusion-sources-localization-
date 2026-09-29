@@ -79,3 +79,21 @@ def test_tie_tolerance_is_relative_to_maximum_not_running_best(monkeypatch):
     monkeypatch.setattr('diffusion_sources.temporal_learned_training.evaluate_reranker',scores)
     h,_=select_head(tiny_table(),replace(tiny_table(),indices=np.arange(6)+10),tiny_graph())
     assert h.C==1.
+
+
+def test_deadline_stops_dev_evaluation_before_next_cascade(monkeypatch):
+    from diffusion_sources import temporal_learned_evaluation as evaluation
+    from diffusion_sources.temporal_learned_features import FEATURE_NAMES
+    clock=[0.]
+    monkeypatch.setattr('time.monotonic',lambda:clock[0])
+    head=LinearHead(FEATURE_NAMES,(0.,)*6,(1.,)*6,(1.,0.,0.,0.,0.,0.),0.,1.)
+    monkeypatch.setattr('diffusion_sources.temporal_learned_training.fit_head',lambda *a:head)
+    original=evaluation.set_metrics
+    calls=[]
+    def timed(*args):
+        calls.append(1); clock[0]+=.4
+        return original(*args)
+    monkeypatch.setattr(evaluation,'set_metrics',timed)
+    with pytest.raises(TimeoutError):
+        select_head(tiny_table(),replace(tiny_table(),indices=np.arange(6)+10),tiny_graph(),budget_seconds=1)
+    assert len(calls)==3  # first cascade only, not all eighteen metric calls

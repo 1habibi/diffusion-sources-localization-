@@ -204,7 +204,7 @@ def _run(stage,paths,device,budget):
         _pending(paths,'validation')
         table,_=_cache(paths,device,'validation',7026,list(range(1998)),budget)
         _,graph=load_graph_archive(Path(paths.data_dir)/'graph.npz')
-        report=evaluate_reranker(table,head,graph,include_ci=True)
+        report=evaluate_reranker(table,head,graph,include_ci=True,budget=budget)
         metrics=json.loads((Path(paths.runs[7026])/'metrics.json').read_text(encoding='utf-8'))
         check_saved_snapshot_f1(report,metrics)
         report.update(seed=7026,gate=validation_gate(report),status='complete',elapsed_seconds=time.monotonic()-budget.start)
@@ -239,7 +239,7 @@ def _run(stage,paths,device,budget):
             else:
                 _pending(paths,name)
                 table,_=_cache(paths,device,'validation',seed,list(range(1998)),budget)
-                report=evaluate_reranker(table,head,graph,include_ci=True)
+                report=evaluate_reranker(table,head,graph,include_ci=True,budget=budget)
                 metrics=json.loads((Path(paths.runs[seed])/'metrics.json').read_text(encoding='utf-8'))
                 check_saved_snapshot_f1(report,metrics)
                 report.update(seed=seed,status='complete')
@@ -256,7 +256,7 @@ def _run(stage,paths,device,budget):
     if (Path(paths.output_dir)/'summary').exists():
         return _read(paths,'summary',identity)
     _pending(paths,'summary')
-    result=summarize_repeats([primary,*confirm['reports']])
+    result=summarize_repeats([primary,*confirm['reports']],budget=budget)
     result.update(status='complete',elapsed_seconds=time.monotonic()-budget.start)
     budget.check()
     return _write(paths,'summary',identity,result)

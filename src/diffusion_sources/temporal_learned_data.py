@@ -10,6 +10,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
+import yaml
 
 from .temporal_learned_features import FEATURE_NAMES
 from .temporal_pilot_artifacts import sha256_file
@@ -119,14 +120,22 @@ def cache_identity(data_dir, run_dir, split, indices, device):
     device = torch.device(device)
     runtime.update(device=str(device), dtype='float64-features/float32-gcn',
                    cuda=torch.version.cuda, device_name=torch.cuda.get_device_name(device) if device.type == 'cuda' and torch.cuda.is_available() else None)
-    source_names = ('temporal_learned_features.py', 'temporal_learned_data.py', 'temporal_learned_collect.py',
-                    'temporal_replay.py', 'temporal_scoring.py', 'features.py', 'models.py', 'inference.py', 'dataset.py')
+    config = yaml.safe_load((run/'config.yaml').read_text(encoding='utf-8'))
+    configured = config.get('data', {}).get('distance_cache')
+    distance = Path(configured) if configured else None
+    # Match the read-only builder's effective dependency (including absence).
+    distance_dependency = {'present': False, 'sha256': None}
+    if distance is not None and distance.exists():
+        if not distance.is_file():
+            raise ValueError('Configured distance cache is not a file')
+        distance_dependency = {'present': True, 'sha256': sha256_file(distance)}
     source_dir = Path(__file__).parent
-    sources = {p: hashlib.sha256((source_dir/p).read_bytes().replace(b'\r\n', b'\n')).hexdigest()
-               for p in source_names if (source_dir/p).exists()}
+    # Conservative package fingerprint covers transitive replay, metrics and CI.
+    sources = {p.relative_to(source_dir).as_posix(): hashlib.sha256(p.read_bytes().replace(b'\r\n', b'\n')).hexdigest()
+               for p in sorted(source_dir.rglob('*.py'))}
     return dict(schema_version=1, split=split, indices=list(map(int, values)),
                 inputs={k: sha256_file(p) for k, p in files.items()}, runtime=runtime,
-                sources=sources, feature_names=list(FEATURE_NAMES),
+                sources=sources, distance_dependency=distance_dependency, feature_names=list(FEATURE_NAMES),
                 early_policy='independent-bernoulli-t1-seedsequence-v1', t1=1, beta=.5)
 
 
