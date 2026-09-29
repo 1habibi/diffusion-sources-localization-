@@ -33,6 +33,8 @@ source dependencies и отсутствие deadline между оценочны
 экстраполяция 58.8 min включает fixed costs и не заменяет замер cache2160.
 Реальные cache2160, fit/select, validation и новые независимые оценки не выполнялись.
 Ветка не merged/pushed; новая модель не объявляется улучшением до эксперимента.
+Все восемь задач реализации завершены; Task8 закрыта повторным полным suite
+сохранённой ветки: 378 passed, два прежних warnings, 352.64 s.
 
 Финальный smoke после review — новый append-only `local_smoke_v3`: **6.579 s**,
 ровно шесть настоящих train-примеров, `training_performed=false`, тот же full early
