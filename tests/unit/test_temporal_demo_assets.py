@@ -71,6 +71,33 @@ def test_manifest_hash_mismatch_rejected(tmp_path: Path) -> None:
         load_temporal_resources(root)
 
 
+def test_damaged_mapping_is_authenticated_before_schema_access(tmp_path: Path) -> None:
+    root = _small_backup(tmp_path)
+    (root / "local_paths.json").write_text("{}", encoding="utf-8")
+    with pytest.raises(ValueError, match=r"SHA256.*local_paths\.json"):
+        load_temporal_resources(root)
+
+
+@pytest.mark.parametrize("contents", ["{", "{}"])
+def test_damaged_manifest_names_its_path(tmp_path: Path, contents: str) -> None:
+    root = _small_backup(tmp_path)
+    (root / "backup_manifest.json").write_text(contents, encoding="utf-8")
+    with pytest.raises(ValueError, match=r"backup_manifest\.json"):
+        load_temporal_resources(root)
+
+
+def test_authenticated_but_invalid_mapping_names_its_path(tmp_path: Path) -> None:
+    root = _small_backup(tmp_path)
+    mapping = root / "local_paths.json"
+    mapping.write_text("{}", encoding="utf-8")
+    manifest_path = root / "backup_manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["local_mapping"]["sha256"] = hashlib.sha256(mapping.read_bytes()).hexdigest()
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    with pytest.raises(ValueError, match=r"local_paths\.json"):
+        load_temporal_resources(root)
+
+
 @pytest.mark.parametrize("bad_input", ["model", "graph"])
 def test_wrong_graph_or_model_config_rejected(tmp_path: Path, bad_input: str) -> None:
     root = _small_backup(tmp_path)

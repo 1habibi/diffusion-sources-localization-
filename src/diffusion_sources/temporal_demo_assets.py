@@ -37,8 +37,14 @@ class DemoResources:
 def _read_json(path: Path) -> dict:
     if not path.is_file():
         raise FileNotFoundError(path)
-    with path.open(encoding="utf-8") as stream:
-        return json.load(stream)
+    try:
+        with path.open(encoding="utf-8") as stream:
+            value = json.load(stream)
+    except (json.JSONDecodeError, UnicodeError) as exc:
+        raise ValueError(f"Invalid JSON: {path}: {exc}") from exc
+    if not isinstance(value, dict):
+        raise ValueError(f"Invalid JSON object: {path}")
+    return value
 
 
 def _file_hash(path: Path) -> str:
@@ -60,18 +66,41 @@ def load_temporal_resources(backup_root: Path) -> DemoResources:
     """Validate protected backup inputs and restore inference on CPU only."""
     root = Path(backup_root).resolve()
     mapping_path = root / "local_paths.json"
-    manifest = _read_json(root / "backup_manifest.json")
-    mapping = _read_json(mapping_path)
-    required = (
-        mapping["reference_data"] + "/graph.npz",
-        mapping["reference_data"] + "/config.yaml",
-        mapping["runs"]["7026"] + "/config.yaml",
-        mapping["runs"]["7026"] + "/best_model.pt",
-    )
-    protected = {row["path"]: row for row in manifest["files"]}
-    local_info = manifest["local_mapping"]
+    manifest_path = root / "backup_manifest.json"
+    manifest = _read_json(manifest_path)
+    try:
+        local_info = manifest["local_mapping"]
+        files = manifest["files"]
+        protocol = manifest["protocol"]
+        if (not isinstance(local_info, dict) or not isinstance(local_info["sha256"], str)
+                or not isinstance(files, list) or not isinstance(protocol, dict)):
+            raise ValueError("wrong field types")
+        protected = {}
+        for row in files:
+            if (not isinstance(row, dict) or not isinstance(row["path"], str)
+                    or not isinstance(row["bytes"], int) or not isinstance(row["sha256"], str)):
+                raise ValueError("invalid file record")
+            protected[row["path"]] = row
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError(f"Invalid backup manifest: {manifest_path}: {exc}") from exc
+    if not mapping_path.is_file():
+        raise FileNotFoundError(mapping_path)
     if local_info["sha256"] != _file_hash(mapping_path):
         raise ValueError(f"SHA256 mismatch: {mapping_path}")
+    mapping = _read_json(mapping_path)
+    try:
+        reference = mapping["reference_data"]
+        frozen_run = mapping["runs"]["7026"]
+        if not isinstance(reference, str) or not reference or not isinstance(frozen_run, str) or not frozen_run:
+            raise ValueError("invalid required paths")
+        required = (
+            reference + "/graph.npz",
+            reference + "/config.yaml",
+            frozen_run + "/config.yaml",
+            frozen_run + "/best_model.pt",
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError(f"Invalid local paths: {mapping_path}: {exc}") from exc
     for relative in required:
         path = _inside(root, relative)
         if not path.is_file():
@@ -80,9 +109,8 @@ def load_temporal_resources(backup_root: Path) -> DemoResources:
         if entry is None or path.stat().st_size != entry["bytes"] or _file_hash(path) != entry["sha256"]:
             raise ValueError(f"SHA256 mismatch: {path}")
 
-    protocol = manifest.get("protocol", {})
     if protocol.get("model") != "S1b snapshot GCN + temporal correction" or protocol.get("beta") != 0.5 or protocol.get("t1") != 1:
-        raise ValueError("Frozen backup protocol mismatch")
+        raise ValueError(f"Frozen backup protocol mismatch: {manifest_path}")
 
     graph_id, graph = load_graph_archive(_inside(root, required[0]))
     if graph_id != "ego_facebook" or graph.number_of_nodes() != 4039 or graph.number_of_edges() != 88234:

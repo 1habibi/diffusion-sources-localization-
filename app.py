@@ -69,13 +69,15 @@ def _render_result(result: TemporalDemoResult) -> None:
         method = "snapshot" if view_method == "Snapshot" else "temporal"
         figure = plot_demo_graph(view, result, method, frame, show_truth)
         event = st.plotly_chart(figure, width="stretch", on_select="rerun", selection_mode="points", key=f"graph_selection_{id(result)}")
-        if event and event.selection.points:
-            point = event.selection.points[0]
-            original_id = point.get("customdata")
-            if isinstance(original_id, (list, tuple)):
-                original_id = original_id[0] if original_id else None
-            if isinstance(original_id, int) and original_id in result.graph:
-                st.session_state["selected_node"] = original_id
+        selected_points = event.selection.points if event else []
+        first_id = selected_points[0].get("customdata") if selected_points else None
+        if isinstance(first_id, (list, tuple)):
+            first_id = first_id[0] if first_id else None
+        graph_selection = (first_id,) if isinstance(first_id, int) and first_id in result.graph else ()
+        if graph_selection != st.session_state.get("last_graph_selection", ()):
+            st.session_state["last_graph_selection"] = graph_selection
+            if graph_selection:
+                st.session_state["selected_node"] = graph_selection[0]
         st.caption("Синий — наблюдённое заражение; ромб — прогноз; зелёная обводка — истинный источник (если открыт). В слое «Скоринг» яркость показывает сырой GCN score, не вероятность.")
     with right:
         st.markdown("#### Сравнение")
@@ -125,6 +127,7 @@ def main() -> None:
             st.session_state["demo_result"] = new_result
             st.session_state["demo_view"] = new_view
             st.session_state["selected_node"] = None
+            st.session_state["last_graph_selection"] = ()
         except (FileNotFoundError, OSError, ValueError, RuntimeError) as exc:
             st.error(f"Расчёт не завершён: {exc}. Проверьте локальный архив модели и параметры; предыдущий результат сохранён.")
     result = st.session_state.get("demo_result")

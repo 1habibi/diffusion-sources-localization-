@@ -107,3 +107,14 @@ def test_predicted_k_is_not_control_value(fake_services) -> None:
     values = {metric.label: metric.value for metric in page.metric}
     assert values["Предсказанное k"] == "1"
     assert values["Истинное k"] == "2"
+
+
+def test_graph_selection_does_not_override_later_selectbox_choice(fake_services, monkeypatch: pytest.MonkeyPatch) -> None:
+    retained_event = SimpleNamespace(selection=SimpleNamespace(points=[{"customdata": 1}]))
+    monkeypatch.setattr(app.st, "plotly_chart", lambda *args, **kwargs: retained_event)
+    page = _page()
+    page.button(key="run_demo").click().run()
+    assert page.session_state["selected_node"] == 1
+    page.selectbox(key="selected_node").set_value(2).run()
+    assert not page.exception
+    assert page.session_state["selected_node"] == 2
