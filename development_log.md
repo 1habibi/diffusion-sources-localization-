@@ -646,6 +646,10 @@ Primary сравнение — temporal vs snapshot, secondary — temporal vs e
 
 В отдельном worktree `experiment/known-k-temporal-gcn` тест отчётного notebook выявил, что глобальный `core.autocrlf=true` превращал 257 LF в CRLF при checkout `thesis_report/data/independent_summary.json`. Git blob и исходный файл в `master` имеют утверждённый SHA-256 `980e20c405503cde35ff8f89db934989c994390fd3d203db73b15ac303328030`, а копия с CRLF имела `2d2b4216c2dab1fa49c13ed17eca2f05f541e3f9168e250b68b7378691cbb1f4`; JSON-значения не менялись. Добавлены точечный `.gitattributes` с `text eol=lf` и ранний регрессионный тест: он дал RED на CRLF и GREEN после нормализации. Новый временный worktree из коммита `fc183f4` подтвердил LF и исходный SHA-256 при свежем checkout; затем этот проверочный worktree удалён. Для полного тестирования в экспериментальный worktree скопирована игнорируемая Git локальная backup-копия (69 файлов, около 58 MB); оригинал не менялся. Полный прогон: **425 passed**, два прежних предупреждения `torch.jit.script`. Содержимое JSON, checkpoint, модель, Drive и `master` не менялись; GitHub push не выполнялся.
 
+## 51. План pilot обучаемой Temporal-GCN с известным k (2026-10-02)
+
+Пользователь одобрил дизайн отдельного эксперимента `docs/superpowers/specs/2026-10-02-known-k-temporal-gcn-design.md`. Подготовлен пошаговый план `docs/superpowers/plans/2026-10-02-known-k-temporal-gcn-pilot.md`: source-blind вход из двух снимков и заданного k, парная оценка с S1b + Temporal-v3 при том же k, одно обучение seed 7026, заранее заданный gate, защищённые артефакты и Colab notebook с явной остановкой. Уточнены безопасный resume только незавершённого pilot с тем же frozen identity и раздельная проверка SHA-256 входов/выходов. Повторы, новый independent holdout и UI намеренно оставлены на следующий этап после результата gate. Пока новых обучений, модельных метрик, изменений UI и публикации GitHub нет; `master` и `thesis_report/` не менялись.
+
 ## История обновлений
 
 - **2026-08-12:** создан журнал и зафиксировано состояние проекта после завершения программного MVP и Facebook-пилота.
