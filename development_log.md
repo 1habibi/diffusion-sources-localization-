@@ -642,6 +642,10 @@ Primary сравнение — temporal vs snapshot, secondary — temporal vs e
 
 2026-09-28 пользователь одобрил письменный дизайн сообщением «го». Подготовлен docs/superpowers/plans/2026-09-28-temporal-v3-independent-evaluation.md: четыре последовательных TDD-этапа (artifact freeze, protected generation/seal, explicit open/frozen inference, paired summary/notebook), фиксированные интерфейсы, resume/mismatch проверки и отдельная защита от чтения новых labels до открытия. План не исполнялся; продуктовый код и новые данные не создавались. Для реализации предложен Native с независимым whole-branch review; пользователь ещё выбирает способ и просматривает план.
 
+## 50. Исправление SHA-256 чистового JSON на Windows (2026-10-02)
+
+В отдельном worktree `experiment/known-k-temporal-gcn` тест отчётного notebook выявил, что глобальный `core.autocrlf=true` превращал 257 LF в CRLF при checkout `thesis_report/data/independent_summary.json`. Git blob и исходный файл в `master` имеют утверждённый SHA-256 `980e20c405503cde35ff8f89db934989c994390fd3d203db73b15ac303328030`, а копия с CRLF имела `2d2b4216c2dab1fa49c13ed17eca2f05f541e3f9168e250b68b7378691cbb1f4`; JSON-значения не менялись. Добавлены точечный `.gitattributes` с `text eol=lf` и ранний регрессионный тест: он дал RED на CRLF и GREEN после нормализации. Новый временный worktree из коммита `fc183f4` подтвердил LF и исходный SHA-256 при свежем checkout; затем этот проверочный worktree удалён. Для полного тестирования в экспериментальный worktree скопирована игнорируемая Git локальная backup-копия (69 файлов, около 58 MB); оригинал не менялся. Полный прогон: **425 passed**, два прежних предупреждения `torch.jit.script`. Содержимое JSON, checkpoint, модель, Drive и `master` не менялись; GitHub push не выполнялся.
+
 ## История обновлений
 
 - **2026-08-12:** создан журнал и зафиксировано состояние проекта после завершения программного MVP и Facebook-пилота.
