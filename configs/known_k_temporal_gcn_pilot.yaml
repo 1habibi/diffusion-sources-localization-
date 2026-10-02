@@ -1,0 +1,29 @@
+experiment: known_k_temporal_gcn_pilot_v1
+data:
+  feature_names:
+    - observed_infected
+    - log_degree_normalized
+    - observed_neighbor_count_normalized
+    - observed_neighbor_fraction
+    - unobserved_neighbor_count_normalized
+    - unobserved_neighbor_fraction
+    - closed_neighborhood_observed_fraction
+    - mean_distance_to_observed_normalized
+    - max_distance_to_observed_normalized
+    - induced_observed_eccentricity_normalized
+  distance_cap: 10
+model:
+  architecture: node_only
+  input_dim: 14
+  hidden_dim: 64
+  dropout: 0.2
+training:
+  seed: 7026
+  learning_rate: 0.001
+  batch_size: 3
+  max_epochs: 100
+  patience: 10
+evaluation:
+  evaluate_test: false
+  control_beta: 0.5
+  selection_split: validation
