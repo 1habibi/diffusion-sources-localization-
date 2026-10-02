@@ -3,18 +3,13 @@ data:
   feature_names:
     - observed_infected
     - log_degree_normalized
-    - observed_neighbor_count_normalized
-    - observed_neighbor_fraction
-    - unobserved_neighbor_count_normalized
-    - unobserved_neighbor_fraction
-    - closed_neighborhood_observed_fraction
     - mean_distance_to_observed_normalized
     - max_distance_to_observed_normalized
     - induced_observed_eccentricity_normalized
   distance_cap: 10
 model:
   architecture: node_only
-  input_dim: 14
+  input_dim: 9
   hidden_dim: 64
   dropout: 0.2
 training:

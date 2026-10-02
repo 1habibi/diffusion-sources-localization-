@@ -12,7 +12,7 @@ from diffusion_sources.known_k_temporal_eval import evaluate_known_k_pairs, know
 
 def _case(index=0):
     graph = nx.path_graph(3)
-    final = np.zeros((3, 10), dtype=np.float32)
+    final = np.zeros((3, 5), dtype=np.float32)
     final[:, 0] = [1, 1, 0]
     case = make_observation(
         final, np.array([0, 0, 1]), np.array([1, 1, 1]), 1, graph_to_edge_index(graph)

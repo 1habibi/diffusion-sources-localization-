@@ -55,7 +55,7 @@ def evaluate_known_k_pairs(
     rows: list[dict] = []
     for case in cases:
         index = int(case.example_index)
-        if (case.x.shape != (n, 14) or case.source_labels.shape != (n,)
+        if (case.x.shape != (n, 9) or case.source_labels.shape != (n,)
                 or case.candidate_mask.shape != (n,) or case.early_observed_mask.shape != (n,)):
             raise ValueError(f"example {index}: invalid paired masks/features")
         k = int(case.source_count.item())

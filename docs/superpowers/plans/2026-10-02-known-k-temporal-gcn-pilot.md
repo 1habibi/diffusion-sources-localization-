@@ -4,7 +4,7 @@
 
 **Goal:** Получить один воспроизводимый Colab pilot новой GCN, которая обучается на раннем и конечном снимках с заданным `k`, и решить по заранее заданному gate, нужны ли повторы.
 
-**Architecture:** Существующий `NodeOnlyGCN` получает 14 каналов: 10 конечных признаков S1b, раннюю маску и one-hot `k`. Отдельный сборщик воспроизводит раннее наблюдение из train/validation архивов; существующий `fit_node_model` обучает с нуля и выбирает checkpoint по validation oracle-k F1. Парная оценка сравнивает его с замороженным S1b + Temporal-v3, которому дано то же `k` и те же наблюдения.
+**Architecture:** Существующий `NodeOnlyGCN` получает 9 каналов: 5 конечных признаков фактического frozen S1b, раннюю маску и one-hot `k`. Отдельный сборщик воспроизводит раннее наблюдение из train/validation архивов; существующий `fit_node_model` обучает с нуля и выбирает checkpoint по validation oracle-k F1. Парная оценка сравнивает его с замороженным S1b + Temporal-v3, которому дано то же `k` и те же наблюдения.
 
 **Tech Stack:** Python ≥3.10, PyTorch/PyG, NumPy, NetworkX, YAML, pytest, Colab notebook.
 
@@ -14,8 +14,8 @@
 
 - Работа только в `experiment/known-k-temporal-gcn`; текущие checkpoints, backup, отчёты, `master` и неизвестный-k UI не перезаписывать.
 - Только существующие `facebook_main` train (`9990`) и validation (`1998`); `test`, старый independent holdout и новый holdout в pilot не читать.
-- Вход: 10 конечных признаков S1b + бинарное раннее наблюдение `t=1` + one-hot `k ∈ {1,2,3}`. Не подмешивать истинные source labels или infection times в `x`.
-- Модель: существующий двухслойный `NodeOnlyGCN(input_dim=14, hidden_dim=64, dropout=0.2)`, начальная инициализация с нуля; без count-head и ranking-loss.
+- Вход: 5 конечных признаков реального frozen S1b + бинарное раннее наблюдение `t=1` + one-hot `k ∈ {1,2,3}`. Не подмешивать истинные source labels или infection times в `x`.
+- Модель: существующий двухслойный `NodeOnlyGCN(input_dim=9, hidden_dim=64, dropout=0.2)`, начальная инициализация с нуля; без count-head и ranking-loss.
 - Pilot: seed `7026`; Adam `0.001`, batch `3`, максимум `100` эпох, patience `10`, candidate-only weighted BCE, validation oracle-k F1 для ранней остановки.
 - Основной контроль: замороженный S1b + Temporal-v3 `beta=0.5` с **тем же известным k**. Count accuracy в отчёте известного-k режима — `N/A`.
 - Gate: `ΔF1 ≥ 0.02`, нижняя граница paired stratified bootstrap CI `>0`, exact-set accuracy не ниже контроля, падение F1 в каждой группе `k` и candidate count не более `0.02`.
@@ -24,7 +24,7 @@
 
 ## Review Focus
 
-- Пустая ранняя маска допустима: Task 1 тестирует 14 каналов без выдуманного раннего заражения.
+- Пустая ранняя маска допустима: Task 1 тестирует 9 каналов без выдуманного раннего заражения.
 - `k` вне 1–3 либо кандидатов меньше `k`: Task 1 отвергает пример до обучения/инференса.
 - Испорченный replay, seed или labels вне candidate mask: Task 1 останавливается с индексом примера, не пропускает его молча.
 - Смена frozen checkpoint, архива или конфигурации между стадиями: Task 4 отвергает hash/identity mismatch.
@@ -48,9 +48,9 @@
 
 **Interfaces:**
 - `make_observation(final_features: np.ndarray, early_mask: np.ndarray, candidate_mask: np.ndarray, k: int, edge_index: torch.Tensor) -> Data`: только inference-вход (`x`, `edge_index`, `candidate_mask`, `observed_mask`, `early_observed_mask`), без `source_labels`/`infection_times`.
-- `load_known_k_split(data_dir: Path, split: Literal['train','validation'], graph: nx.Graph, builder: SnapshotFeatureBuilder, feature_names: Sequence[str], indices: Sequence[int]) -> list[Data]`: вызывает `replay_early_mask`, пересчитывает десять конечных признаков, добавляет `source_labels`, `source_count` и `example_index` только к обучающей/оценочной копии Data. Предоставляет Task 2–4 упорядоченные примеры; индекс нужен для парной проверки.
+- `load_known_k_split(data_dir: Path, split: Literal['train','validation'], graph: nx.Graph, builder: SnapshotFeatureBuilder, feature_names: Sequence[str], indices: Sequence[int]) -> list[Data]`: вызывает `replay_early_mask`, пересчитывает пять конечных признаков фактического S1b, добавляет `source_labels`, `source_count` и `example_index` только к обучающей/оценочной копии Data. Предоставляет Task 2–4 упорядоченные примеры; индекс нужен для парной проверки.
 
-- [ ] **Step 1: Write failing tests.** `test_make_observation_is_source_blind`: `assert observation.x.shape == (n, 14)`, `assert not hasattr(observation, 'source_labels')`, `assert observation.x[:, 10].tolist() == early_mask.astype(float).tolist()` и one-hot `k`. `test_empty_early_and_bad_k`: пустая маска даёт нулевой канал; `k=0/4` или `candidate_count<k` дают `ValueError`. `test_archive_replay_rejects_corruption`: повреждённые seed/labels дают ошибку с индексом.
+- [ ] **Step 1: Write failing tests.** `test_make_observation_is_source_blind`: `assert observation.x.shape == (n, 9)`, `assert not hasattr(observation, 'source_labels')`, `assert observation.x[:, 5].tolist() == early_mask.astype(float).tolist()` и one-hot `k`. `test_empty_early_and_bad_k`: пустая маска даёт нулевой канал; `k=0/4` или `candidate_count<k` дают `ValueError`. `test_archive_replay_rejects_corruption`: повреждённые seed/labels дают ошибку с индексом.
 - [ ] **Step 2: Verify RED.** `python -m pytest -q tests/unit/test_known_k_temporal_data.py` → FAIL по отсутствующему API/ожидаемым контрактам.
 - [ ] **Step 3: Implement minimal data module.** Использовать `SnapshotFeatureBuilder.build(..., base_features=..., candidate_mask=...)` и существующий `replay_early_mask`; не пересимулировать вручную. Один `edge_index` разделяется примерами, NPZ-поля распаковываются один раз на split.
 - [ ] **Step 4: Verify GREEN.** Та же команда → PASS; отдельно показать, что изменение только `source_labels` не меняет `make_observation(...).x`.
@@ -79,7 +79,7 @@
 - `run_stage(stage: Literal['freeze','smoke','pilot'], paths: KnownKPaths, device: torch.device, *, resume: bool = False) -> dict` — главный API для CLI/notebook. `smoke` использует 6 train и 6 validation примеров, одну CPU-эпоху и `training_performed=True`, но не делает вывод о F1; `pilot` использует весь train/validation. Resume допустим только для прерванного `pilot` с проверенной identity, никогда для завершённой стадии.
 - `main(argv: list[str] | None = None) -> int` — CLI с теми же стадиями.
 
-- [ ] **Step 1: Write failing tests.** Конфиг строго задаёт 14/64/0.2, seed 7026, 0.001/3/100/10, `evaluate_test: false`; локальный smoke на fixture действительно обновляет вес, сохраняет лучший checkpoint и не создаёт test predictions. `pilot` при неверном device/конфиге отказывается до fit.
+- [ ] **Step 1: Write failing tests.** Конфиг строго задаёт 9/64/0.2, seed 7026, 0.001/3/100/10, `evaluate_test: false`; локальный smoke на fixture действительно обновляет вес, сохраняет лучший checkpoint и не создаёт test predictions. `pilot` при неверном device/конфиге отказывается до fit.
 - [ ] **Step 2: Verify RED.** `python -m pytest -q tests/unit/test_known_k_temporal_pilot.py` → FAIL по отсутствующему API.
 - [ ] **Step 3: Implement training path.** Переиспользовать `NodeOnlyGCN`, `calculate_pos_weight`, `fit_node_model`, `save_training_result`, `set_seed`, `predict_oracle_k`; адаптер Data из Task 1. Историю `count_accuracy=1.0` у legacy trainer явно маркировать технической oracle-k величиной, в pilot-отчёте `N/A`.
 - [ ] **Step 4: Verify GREEN.** Та же команда → PASS; CPU smoke на настоящих первых шести train/validation примерах, если локальный архив доступен, иначе fixture-only и явная пометка в журнале. Проверить `torch.load(..., weights_only=True)` выбранного checkpoint.

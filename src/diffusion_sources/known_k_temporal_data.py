@@ -33,8 +33,8 @@ def make_observation(
 ) -> Data:
     """Build inference-only features; targets are deliberately not accepted."""
     final = np.asarray(final_features)
-    if final.ndim != 2 or final.shape[1] != 10 or not np.isfinite(final).all():
-        raise ValueError("final_features must have 10 finite columns")
+    if final.ndim != 2 or final.shape[1] != 5 or not np.isfinite(final).all():
+        raise ValueError("final_features must have 5 finite columns")
     n = len(final)
     early = _binary_mask(early_mask, n, "early_mask")
     candidates = _binary_mask(candidate_mask, n, "candidate_mask")
@@ -69,8 +69,8 @@ def load_known_k_split(
     """Replay checked early observations and attach targets only to train/eval cases."""
     if split not in ("train", "validation"):
         raise ValueError("Only train and validation are available to the pilot")
-    if len(feature_names) != 10:
-        raise ValueError("Known-k pilot requires exactly ten final snapshot features")
+    if len(feature_names) != 5:
+        raise ValueError("Known-k pilot requires exactly five final snapshot features")
     data_dir = Path(data_dir)
     config = yaml.safe_load((data_dir / "config.yaml").read_text(encoding="utf-8"))
     with np.load(data_dir / f"{split}.npz", allow_pickle=False) as archive:

@@ -13,26 +13,25 @@ from diffusion_sources.features import SnapshotFeatureBuilder
 from diffusion_sources.known_k_temporal_data import load_known_k_split, make_observation
 
 
-FEATURE_NAMES = tuple(
-    yaml.safe_load(Path("configs/snapshot_v2/s1b_distance_position.yaml").read_text(encoding="utf-8"))[
-        "data"
-    ]["feature_names"]
+FEATURE_NAMES = (
+    "observed_infected", "log_degree_normalized", "mean_distance_to_observed_normalized",
+    "max_distance_to_observed_normalized", "induced_observed_eccentricity_normalized",
 )
 
 
 def test_make_observation_is_source_blind():
     graph = nx.path_graph(4)
-    final = np.arange(40, dtype=np.float32).reshape(4, 10)
+    final = np.arange(20, dtype=np.float32).reshape(4, 5)
     final[:, 0] = [1, 1, 0, 0]
     early = np.array([0, 1, 0, 0], dtype=bool)
     candidates = np.array([1, 1, 1, 0], dtype=bool)
 
     case = make_observation(final, early, candidates, 2, graph_to_edge_index(graph))
 
-    assert case.x.shape == (4, 14)
-    torch.testing.assert_close(case.x[:, :10], torch.from_numpy(final))
-    assert case.x[:, 10].tolist() == [0.0, 1.0, 0.0, 0.0]
-    assert case.x[:, 11:].tolist() == [[0.0, 1.0, 0.0]] * 4
+    assert case.x.shape == (4, 9)
+    torch.testing.assert_close(case.x[:, :5], torch.from_numpy(final))
+    assert case.x[:, 5].tolist() == [0.0, 1.0, 0.0, 0.0]
+    assert case.x[:, 6:].tolist() == [[0.0, 1.0, 0.0]] * 4
     assert case.observed_mask.tolist() == [True, True, False, False]
     assert case.candidate_mask.tolist() == [True, True, True, False]
     assert not hasattr(case, "source_labels")
@@ -41,13 +40,13 @@ def test_make_observation_is_source_blind():
 
 @pytest.mark.parametrize("bad_k", [0, 4, 3])
 def test_empty_early_and_bad_k(bad_k):
-    final = np.zeros((3, 10), dtype=np.float32)
+    final = np.zeros((3, 5), dtype=np.float32)
     early = np.zeros(3, dtype=bool)
     candidates = np.array([1, 1, 0], dtype=bool)
     edge = graph_to_edge_index(nx.path_graph(3))
 
     case = make_observation(final, early, candidates, 2, edge)
-    assert case.x[:, 10].tolist() == [0.0, 0.0, 0.0]
+    assert case.x[:, 5].tolist() == [0.0, 0.0, 0.0]
     with pytest.raises(ValueError):
         make_observation(final, early, candidates, bad_k, edge)
 
@@ -62,7 +61,7 @@ def test_split_replays_same_early_mask_and_preserves_example_index(temporal_data
     cases = load_known_k_split(data_dir, "train", graph, builder, FEATURE_NAMES, [0, 2])
 
     assert [case.example_index for case in cases] == [0, 2]
-    assert all(case.x.shape == (34, 14) for case in cases)
+    assert all(case.x.shape == (34, 9) for case in cases)
     assert cases[0].edge_index.data_ptr() == cases[1].edge_index.data_ptr()
     with np.load(data_dir / "train.npz", allow_pickle=False) as archive:
         for case in cases:
