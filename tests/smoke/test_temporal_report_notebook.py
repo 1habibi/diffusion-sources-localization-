@@ -44,9 +44,12 @@ def test_notebook_exports_six_figures_and_plots_saved_values(executed):
     assert executed['FIGURES']['01_overall_f1'].axes[0].get_ylim()[0] == 0
 
 
-def test_archived_summary_matches_drive_manifest_and_used_file(executed):
+def test_checked_out_summary_preserves_approved_hash():
     assert hashlib.sha256(SUMMARY.read_bytes()).hexdigest() == (
         '980e20c405503cde35ff8f89db934989c994390fd3d203db73b15ac303328030')
+
+
+def test_archived_summary_matches_drive_manifest_and_used_file(executed):
     assert executed['SUMMARY_PATH'].resolve() == SUMMARY.resolve()
 
 
