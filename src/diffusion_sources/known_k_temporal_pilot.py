@@ -8,6 +8,7 @@ from typing import Literal
 
 import argparse
 import json
+import time
 import numpy as np
 import torch
 import yaml
@@ -86,8 +87,11 @@ def _input_identity(paths: KnownKPaths, config: dict) -> dict:
         "s1b_config.yaml": frozen / "config.yaml",
         "s1b_best_model.pt": frozen / "best_model.pt",
     }
+    source_root = Path(__file__).resolve().parent
     return {"output_root": str(output),
-            "input_hashes": {name: sha256_file(path) for name, path in inputs.items()}}
+            "input_hashes": {name: sha256_file(path) for name, path in inputs.items()},
+            "code_hashes": {path.name: sha256_file(path)
+                            for path in sorted(source_root.glob("*.py"))}}
 
 
 def _complete_binary_stage(output: Path, stage: str, progress: Path,
@@ -95,7 +99,9 @@ def _complete_binary_stage(output: Path, stage: str, progress: Path,
     (progress / "payload.json").write_text(
         json.dumps(payload, ensure_ascii=False, indent=2, allow_nan=False), encoding="utf-8"
     )
-    hashes = {path.name: sha256_file(path) for path in progress.iterdir() if path.is_file()}
+    artifacts = ("input_identity.json", "last_checkpoint.pt", "last_checkpoint.pt.sha256",
+                 "history.json", "history.csv", "best_model.pt", "payload.json")
+    hashes = {name: sha256_file(progress / name) for name in artifacts}
     manifest = {"schema_version": 1, "identity": identity, "file_hashes": hashes}
     (progress / "manifest.json").write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -110,13 +116,32 @@ def _validate_resume_progress(progress: Path, identity: dict) -> None:
     if saved != identity:
         raise ValueError("partial pilot identity mismatch; choose a new output root")
     checkpoint = progress / "last_checkpoint.pt"
-    if not checkpoint.is_file() or checkpoint.with_suffix(".pt.tmp").exists():
+    digest_file = progress / "last_checkpoint.pt.sha256"
+    if (not checkpoint.is_file() or not digest_file.is_file()
+            or checkpoint.with_suffix(".pt.tmp").exists()
+            or digest_file.with_suffix(".sha256.tmp").exists()):
         raise ValueError("partial pilot has no complete last-checkpoint")
+    if digest_file.read_text(encoding="ascii").strip() != sha256_file(checkpoint):
+        raise ValueError("partial pilot checkpoint is corrupt: SHA-256 mismatch")
     try:
         state = torch.load(checkpoint, map_location="cpu", weights_only=False)
     except Exception as exc:
         raise ValueError("partial pilot checkpoint is corrupt") from exc
-    if not isinstance(state, dict) or not {"epoch", "model_state_dict", "optimizer_state_dict"} <= set(state):
+    required = {"epoch", "model_state_dict", "optimizer_state_dict", "best_epoch", "best_score",
+                "best_state_dict", "stale_epochs", "train_history", "validation_history",
+                "python_random_state", "numpy_random_state", "torch_random_state",
+                "cuda_random_states", "checkpoint_metadata"}
+    if (not isinstance(state, dict) or not required <= set(state)
+            or state["checkpoint_metadata"] != {"known_k_identity": identity, "stage": "pilot"}):
+        raise ValueError("partial pilot checkpoint metadata/identity mismatch")
+    epoch = state["epoch"]
+    if (not isinstance(epoch, int) or epoch < 1 or epoch > 100
+            or len(state["train_history"]) != epoch
+            or len(state["validation_history"]) != epoch
+            or not isinstance(state["model_state_dict"], dict)
+            or not state["model_state_dict"]
+            or not isinstance(state["optimizer_state_dict"], dict)
+            or not state["optimizer_state_dict"]):
         raise ValueError("partial pilot checkpoint is corrupt")
 
 
@@ -154,7 +179,8 @@ def run_stage(
     if stage == "freeze":
         if (output_root / "freeze").exists():
             return read_stage(output_root, "freeze", identity)[1]
-        payload = {"status": "frozen", "input_hashes": identity["input_hashes"]}
+        payload = {"status": "frozen", "input_hashes": identity["input_hashes"],
+                   "code_hashes": identity["code_hashes"]}
         write_stage(output_root, "freeze", {"identity": identity}, payload)
         return read_stage(output_root, "freeze", identity)[1]
     read_stage(output_root, "freeze", identity)
@@ -199,6 +225,7 @@ def run_stage(
     set_seed(config["training"]["seed"])
     model = NodeOnlyGCN(input_dim=9, hidden_dim=64, dropout=0.2).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+    fit_started = time.perf_counter()
     result = fit_node_model(
         model, train, validation, optimizer,
         max_epochs=1 if stage == "smoke" else config["training"]["max_epochs"],
@@ -207,12 +234,16 @@ def run_stage(
         batch_size=config["training"]["batch_size"],
         checkpoint_path=progress / "last_checkpoint.pt",
         resume_from=progress / "last_checkpoint.pt" if resume else None,
+        checkpoint_metadata={"known_k_identity": identity, "stage": stage},
     )
+    fit_elapsed_seconds = time.perf_counter() - fit_started
     save_training_result(result, progress)
     payload = {"stage": stage, "training_performed": True, "quality_gate": None,
             "n_train": n_train, "n_validation": n_validation,
             "best_epoch": result.best_epoch,
             "best_validation_oracle_f1": result.validation_history[result.best_epoch - 1].macro_f1,
+            "fit_elapsed_seconds": fit_elapsed_seconds,
+            "history_count_accuracy_note": "technical oracle-k constant; not a model result",
             "output": str(final)}
     if stage == "pilot":
         paired = _evaluate_pilot(model, validation, graph, Path(paths.frozen_s1b_dir), device)

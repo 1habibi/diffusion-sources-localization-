@@ -262,3 +262,27 @@ def test_node_training_resumes_from_last_checkpoint(tmp_path):
 
     assert resumed.stopped_epoch == 2
     assert checkpoint.exists()
+
+
+def test_node_resume_does_not_train_after_saved_early_stop(tmp_path, monkeypatch):
+    checkpoint = tmp_path / "node_stopped.pt"
+    model = NodeOnlyGCN(hidden_dim=8, dropout=0.0)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+    first = fit_node_model(model, [model_data()], [model_data()], optimizer,
+                           max_epochs=1, patience=1, checkpoint_path=checkpoint)
+    saved = torch.load(checkpoint, map_location="cpu", weights_only=False)
+    saved["stale_epochs"] = 1
+    torch.save(saved, checkpoint)
+
+    def unexpected_train(*args, **kwargs):
+        raise AssertionError("training resumed after early stop")
+
+    monkeypatch.setattr("diffusion_sources.training.train_node_one_epoch", unexpected_train)
+    resumed_model = NodeOnlyGCN(hidden_dim=8, dropout=0.0)
+    resumed_optimizer = torch.optim.Adam(resumed_model.parameters(), lr=0.01)
+    resumed = fit_node_model(resumed_model, [model_data()], [model_data()],
+                             resumed_optimizer, max_epochs=2, patience=1,
+                             resume_from=checkpoint)
+
+    assert resumed.stopped_epoch == first.stopped_epoch
+    assert resumed.stop_reason == "early_stopping"

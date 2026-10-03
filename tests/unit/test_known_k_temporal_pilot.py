@@ -13,6 +13,7 @@ from diffusion_sources.known_k_temporal_data import load_known_k_split
 from diffusion_sources.known_k_temporal_pilot import (
     KnownKPaths, _evaluate_pilot, _validate_resume_progress, main, run_stage,
 )
+from diffusion_sources.temporal_pilot_artifacts import sha256_file
 from diffusion_sources.models import JointSourceCountGCN, NodeOnlyGCN
 from diffusion_sources.train_cli import set_seed
 
@@ -159,9 +160,79 @@ def test_resume_rejects_changed_identity_and_corrupt_checkpoint(temporal_dataset
     with pytest.raises(ValueError, match="identity"):
         _validate_resume_progress(progress, identity)
     (progress / "input_identity.json").write_text(json.dumps(identity), encoding="utf-8")
+    (progress / "last_checkpoint.pt.sha256").write_text(
+        sha256_file(progress / "last_checkpoint.pt"), encoding="utf-8")
+    with pytest.raises(ValueError, match="identity|stage|metadata"):
+        _validate_resume_progress(progress, identity)
     (progress / "last_checkpoint.pt").write_bytes(b"corrupt")
     with pytest.raises(ValueError, match="corrupt"):
         _validate_resume_progress(progress, identity)
+
+
+def test_freeze_binds_source_code_between_stages(temporal_dataset, tmp_path, monkeypatch):
+    import diffusion_sources.known_k_temporal_pilot as pilot_module
+
+    data_dir, _ = temporal_dataset
+    paths = _paths(data_dir, tmp_path)
+    frozen = run_stage("freeze", paths, torch.device("cpu"))
+    assert "known_k_temporal_pilot.py" in frozen["code_hashes"]
+    original = pilot_module.sha256_file
+
+    def changed_source(path):
+        if Path(path).name == "known_k_temporal_eval.py":
+            return "0" * 64
+        return original(path)
+
+    monkeypatch.setattr(pilot_module, "sha256_file", changed_source)
+    with pytest.raises(ValueError, match="identity"):
+        run_stage("smoke", paths, torch.device("cpu"))
+
+
+def test_valid_pilot_checkpoint_can_resume_with_matching_identity(temporal_dataset, tmp_path):
+    data_dir, _ = temporal_dataset
+    paths = _paths(data_dir, tmp_path)
+    run_stage("freeze", paths, torch.device("cpu"))
+    run_stage("smoke", paths, torch.device("cpu"))
+    identity = json.loads((paths.output_dir / "freeze/manifest.json").read_text(encoding="utf-8"))["identity"]
+    progress = paths.output_dir / ".pilot-progress"
+    progress.mkdir()
+    (progress / "input_identity.json").write_text(json.dumps(identity), encoding="utf-8")
+    checkpoint = progress / "last_checkpoint.pt"
+    state = torch.load(paths.output_dir / "smoke/last_checkpoint.pt", weights_only=False)
+    state["checkpoint_metadata"] = {"known_k_identity": identity, "stage": "pilot"}
+    torch.save(state, checkpoint)
+    (progress / "last_checkpoint.pt.sha256").write_text(
+        sha256_file(checkpoint), encoding="ascii")
+
+    _validate_resume_progress(progress, identity)
+
+    with checkpoint.open("ab") as stream:
+        stream.write(b"tamper")
+    with pytest.raises(ValueError, match="SHA-256"):
+        _validate_resume_progress(progress, identity)
+
+
+def test_finalization_retries_after_manifest_and_complete_were_written(tmp_path):
+    from diffusion_sources.known_k_temporal_pilot import _complete_binary_stage
+    from diffusion_sources.temporal_pilot_artifacts import read_stage
+
+    root = tmp_path / "results"
+    progress = root / ".pilot-progress"
+    progress.mkdir(parents=True)
+    for name in ("input_identity.json", "last_checkpoint.pt", "last_checkpoint.pt.sha256",
+                 "history.json", "history.csv", "best_model.pt"):
+        (progress / name).write_text(name, encoding="utf-8")
+    (progress / "manifest.json").write_text('{"old": true}', encoding="utf-8")
+    (progress / "complete").write_text("complete", encoding="utf-8")
+    identity = {"experiment": "test"}
+
+    result = _complete_binary_stage(root, "pilot", progress, identity, {"stage": "pilot"})
+
+    assert result == {"stage": "pilot"}
+    assert read_stage(root, "pilot", identity)[1] == result
+    manifest = json.loads((root / "pilot/manifest.json").read_text(encoding="utf-8"))
+    assert "manifest.json" not in manifest["file_hashes"]
+    assert "complete" not in manifest["file_hashes"]
 
 
 def test_paired_validation_uses_same_cases_and_known_k(temporal_dataset, tmp_path):

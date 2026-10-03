@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import random
 import time
@@ -70,6 +71,7 @@ def save_last_checkpoint(
     stale_epochs: int,
     train_history: list[EpochMetrics],
     validation_history: list[EpochMetrics],
+    checkpoint_metadata: dict[str, Any] | None = None,
 ) -> None:
     """Atomically save all state needed to resume at the next epoch."""
     checkpoint_path = Path(path)
@@ -92,10 +94,20 @@ def save_last_checkpoint(
             "cuda_random_states": (
                 torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None
             ),
+            "checkpoint_metadata": checkpoint_metadata,
         },
         temporary_path,
     )
     temporary_path.replace(checkpoint_path)
+    if checkpoint_metadata is not None:
+        digest = hashlib.sha256()
+        with checkpoint_path.open("rb") as stream:
+            for block in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(block)
+        sidecar = checkpoint_path.with_suffix(checkpoint_path.suffix + ".sha256")
+        sidecar_tmp = sidecar.with_suffix(sidecar.suffix + ".tmp")
+        sidecar_tmp.write_text(digest.hexdigest() + "\n", encoding="ascii")
+        sidecar_tmp.replace(sidecar)
 
 
 def load_last_checkpoint(
@@ -530,6 +542,7 @@ def fit_node_model(
     batch_size: int = 1,
     checkpoint_path: str | Path | None = None,
     resume_from: str | Path | None = None,
+    checkpoint_metadata: dict[str, Any] | None = None,
 ) -> TrainingResult:
     """Train Node-only GCN with early stopping on validation oracle-k F1."""
     train_data = tuple(train_examples)
@@ -547,8 +560,10 @@ def fit_node_model(
     best_score = state["best_score"]
     best_state = state["best_state"]
     stale_epochs = state["stale_epochs"]
-    stop_reason = "max_epochs"
+    stop_reason = "early_stopping" if stale_epochs >= patience else "max_epochs"
     for epoch in range(state["start_epoch"], max_epochs + 1):
+        if stop_reason == "early_stopping":
+            break
         train_node_one_epoch(
             model,
             train_data,
@@ -607,6 +622,7 @@ def fit_node_model(
                 stale_epochs=stale_epochs,
                 train_history=train_history,
                 validation_history=validation_history,
+                checkpoint_metadata=checkpoint_metadata,
             )
         if stop_reason == "early_stopping":
             break
