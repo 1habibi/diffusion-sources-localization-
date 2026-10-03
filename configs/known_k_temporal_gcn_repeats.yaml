@@ -1,0 +1,3 @@
+seeds: [7027, 7028]
+stop_on_nonpositive_delta: true
+pilot_config: configs/known_k_temporal_gcn_pilot.yaml
