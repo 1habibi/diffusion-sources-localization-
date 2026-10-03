@@ -11,6 +11,7 @@ import yaml
 from diffusion_sources.known_k_temporal_pilot import KnownKPaths, _input_identity, _config, run_stage
 from diffusion_sources.models import JointSourceCountGCN
 from diffusion_sources.temporal_pilot_artifacts import sha256_file
+from diffusion_sources.temporal_pilot_artifacts import write_stage
 
 
 def _fixture_paths(temporal_dataset, tmp_path):
@@ -242,3 +243,78 @@ def test_interrupted_finalization_recovers_only_verified_files(temporal_dataset,
     assert _finish_interrupted_finalization(root, "seed_7027", progress, identity) == {"seed": 7027}
     assert not progress.exists()
     assert (root / "seed_7027" / "complete").is_file()
+
+
+def _signed_seed(paths, seed, delta, identity):
+    report = {
+        "delta_f1": delta, "delta_exact": 0.01, "f1_ci": [0.001, 0.05],
+        "control": {"all": {"f1": 0.55, "exact_set_accuracy": 0.28}},
+        "candidate": {"all": {"f1": 0.55 + delta, "exact_set_accuracy": 0.29}},
+        "delta_by_k": {"1": 0.01, "2": 0.02, "3": 0.03},
+        "delta_by_candidates": {"1-10": 0.01, "11-20": 0.02,
+                                "21-50": 0.03, "51+": 0.04},
+        "rows": [], "count_accuracy": None,
+    }
+    payload = {"seed": seed, "delta_f1": delta, "paired_report": report,
+               "best_epoch": 6, "fit_elapsed_seconds": 20.0}
+    write_stage(paths.output_dir, f"seed_{seed}", {"identity": identity}, payload)
+    return payload
+
+
+def test_negative_7027_blocks_7028_but_allows_failure_summary(temporal_dataset, tmp_path):
+    from scripts.known_k_temporal_repeats import preflight, run_repeat_stage
+
+    paths = _fixture_paths(temporal_dataset, tmp_path)
+    run_repeat_stage("freeze", paths, torch.device("cpu"))
+    identity = preflight(paths)["identity"]
+    _signed_seed(paths, 7027, -0.01, identity)
+    with pytest.raises(ValueError, match="7027|non-positive"):
+        run_repeat_stage("seed_7028", paths, torch.device("cpu"))
+    assert not (paths.output_dir / "seed_7028").exists()
+    report = run_repeat_stage("summary", paths, torch.device("cpu"))
+    assert report["status"] == "stopped_after_7027"
+    assert report["sample_sd_repeat_delta_f1"] is None
+    assert report["positive_delta_each_repeat"] is False
+    assert report["mean_repeat_delta_f1"] == -0.01
+    assert report["reference_7026"]["delta_f1"] == 0.03
+
+
+def test_positive_two_seeds_summary_has_mean_and_sample_sd(temporal_dataset, tmp_path):
+    from scripts.known_k_temporal_repeats import preflight, run_repeat_stage
+
+    paths = _fixture_paths(temporal_dataset, tmp_path)
+    run_repeat_stage("freeze", paths, torch.device("cpu"))
+    identity = preflight(paths)["identity"]
+    _signed_seed(paths, 7027, 0.02, identity)
+    _signed_seed(paths, 7028, 0.04, identity)
+    report = run_repeat_stage("summary", paths, torch.device("cpu"))
+    assert report["status"] == "completed"
+    assert report["mean_repeat_delta_f1"] == pytest.approx(0.03)
+    assert report["sample_sd_repeat_delta_f1"] == pytest.approx(0.0141421356237)
+    assert report["positive_delta_each_repeat"] is True
+    assert "pooled_ci" not in report
+    assert report["repeat_seeds"]["7027"]["delta_by_k"]["2"] == 0.02
+    assert run_repeat_stage("summary", paths, torch.device("cpu")) == report
+
+
+def test_missing_7028_after_positive_7027_refuses_summary(temporal_dataset, tmp_path):
+    from scripts.known_k_temporal_repeats import preflight, run_repeat_stage
+
+    paths = _fixture_paths(temporal_dataset, tmp_path)
+    run_repeat_stage("freeze", paths, torch.device("cpu"))
+    _signed_seed(paths, 7027, 0.02, preflight(paths)["identity"])
+    with pytest.raises(ValueError, match="7028"):
+        run_repeat_stage("summary", paths, torch.device("cpu"))
+    assert not (paths.output_dir / "summary").exists()
+
+
+def test_summary_rejects_tampered_seed_stage(temporal_dataset, tmp_path):
+    from scripts.known_k_temporal_repeats import preflight, run_repeat_stage
+
+    paths = _fixture_paths(temporal_dataset, tmp_path)
+    run_repeat_stage("freeze", paths, torch.device("cpu"))
+    _signed_seed(paths, 7027, -0.01, preflight(paths)["identity"])
+    with (paths.output_dir / "seed_7027" / "payload.json").open("ab") as stream:
+        stream.write(b"tamper")
+    with pytest.raises(ValueError, match="hash"):
+        run_repeat_stage("summary", paths, torch.device("cpu"))

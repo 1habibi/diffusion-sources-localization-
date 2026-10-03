@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import Literal
 
 import json
+import math
+import statistics
 import time
 import numpy as np
 import torch
@@ -235,6 +237,55 @@ def _run_seed(paths: RepeatPaths, seed: int, device: torch.device, identity: dic
     return _complete_binary_stage(root, stage, progress, identity, payload)
 
 
+def _read_seed(root: Path, seed: int, identity: dict) -> dict:
+    _, payload = read_stage(root, f"seed_{seed}", identity)
+    paired = payload.get("paired_report")
+    if (payload.get("seed") != seed or not isinstance(paired, dict)
+            or paired.get("count_accuracy") is not None
+            or not isinstance(payload.get("delta_f1"), (int, float))
+            or not math.isfinite(payload["delta_f1"])
+            or payload["delta_f1"] != paired.get("delta_f1")):
+        raise ValueError(f"seed_{seed} payload is inconsistent")
+    return payload
+
+
+def _summary_entry(payload: dict) -> dict:
+    paired = payload["paired_report"]
+    return {
+        "delta_f1": paired["delta_f1"],
+        "control_f1": paired.get("control", {}).get("all", {}).get("f1"),
+        "candidate_f1": paired.get("candidate", {}).get("all", {}).get("f1"),
+        "delta_exact": paired.get("delta_exact"),
+        "f1_ci": paired.get("f1_ci"),
+        "delta_by_k": paired.get("delta_by_k"),
+        "delta_by_candidates": paired.get("delta_by_candidates"),
+        "best_epoch": payload.get("best_epoch"),
+        "fit_elapsed_seconds": payload.get("fit_elapsed_seconds"),
+    }
+
+
+def summarize_repeats(pilot: dict, repeats: dict[int, dict]) -> dict:
+    """Summarize fixed seeds without treating repeated predictions as new examples."""
+    if set(repeats) not in ({7027}, {7027, 7028}):
+        raise ValueError("summary requires seed 7027, optionally followed by 7028")
+    deltas = [float(repeats[seed]["delta_f1"]) for seed in sorted(repeats)]
+    if any(not math.isfinite(delta) for delta in deltas):
+        raise ValueError("non-finite repeat F1 delta")
+    if (len(deltas) == 1 and deltas[0] > 0) or (len(deltas) == 2 and deltas[0] <= 0):
+        raise ValueError("repeat summary violates fixed 7027 stop rule")
+    return {
+        "exploratory": True, "evaluation_split": "validation",
+        "status": "completed" if len(deltas) == 2 else "stopped_after_7027",
+        "reference_7026": _summary_entry(pilot),
+        "repeat_seeds": {str(seed): _summary_entry(repeats[seed]) for seed in sorted(repeats)},
+        "mean_repeat_delta_f1": statistics.mean(deltas),
+        "sample_sd_repeat_delta_f1": statistics.stdev(deltas) if len(deltas) == 2 else None,
+        "positive_delta_each_repeat": len(deltas) == 2 and all(delta > 0 for delta in deltas),
+        "count_accuracy": None,
+        "interpretation": "Same exploratory validation cascades; no pooled-independent CI or seed selection.",
+    }
+
+
 def run_repeat_stage(
     stage: Literal["freeze", "seed_7027", "seed_7028", "summary"],
     paths: RepeatPaths,
@@ -259,7 +310,25 @@ def run_repeat_stage(
         return read_stage(root, "freeze", identity)[1]
     read_stage(root, "freeze", identity)
     if stage.startswith("seed_"):
+        if stage == "seed_7028":
+            first = _read_seed(root, 7027, identity)
+            if first["delta_f1"] <= 0:
+                raise ValueError("seed 7027 had non-positive delta F1; 7028 is forbidden")
         if device.type != "cuda" or not torch.cuda.is_available():
             raise ValueError("GPU required for full fixed repeats")
         return _run_seed(paths, int(stage.split("_")[1]), device, identity, resume=resume)
-    raise NotImplementedError("summary will be implemented after seed tests")
+    if resume:
+        raise ValueError("summary cannot be resumed")
+    first = _read_seed(root, 7027, identity)
+    repeats = {7027: first}
+    if first["delta_f1"] > 0:
+        if not (root / "seed_7028").exists():
+            raise ValueError("positive seed 7027 requires completed seed 7028 before summary")
+        repeats[7028] = _read_seed(root, 7028, identity)
+    elif (root / "seed_7028").exists():
+        raise ValueError("seed 7028 exists despite non-positive 7027")
+    payload = summarize_repeats(verified["pilot"], repeats)
+    if (root / "summary").exists():
+        return read_stage(root, "summary", identity)[1]
+    write_stage(root, "summary", {"identity": identity}, payload)
+    return read_stage(root, "summary", identity)[1]
