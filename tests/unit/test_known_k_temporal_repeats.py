@@ -318,3 +318,52 @@ def test_summary_rejects_tampered_seed_stage(temporal_dataset, tmp_path):
         stream.write(b"tamper")
     with pytest.raises(ValueError, match="hash"):
         run_repeat_stage("summary", paths, torch.device("cpu"))
+
+
+def test_full_seed_rejects_wrong_archive_sizes_without_partial_output(temporal_dataset, tmp_path):
+    from scripts.known_k_temporal_repeats import _run_seed, preflight, run_repeat_stage
+
+    paths = _fixture_paths(temporal_dataset, tmp_path)
+    run_repeat_stage("freeze", paths, torch.device("cpu"))
+    with pytest.raises(ValueError, match="9990|1998"):
+        _run_seed(paths, 7027, torch.device("cpu"), preflight(paths)["identity"], resume=False)
+    assert not (paths.output_dir / ".seed_7027-progress").exists()
+
+
+def test_summary_rejects_resigned_changed_seed_result(temporal_dataset, tmp_path):
+    from scripts.known_k_temporal_repeats import preflight, run_repeat_stage
+
+    paths = _fixture_paths(temporal_dataset, tmp_path)
+    run_repeat_stage("freeze", paths, torch.device("cpu"))
+    _signed_seed(paths, 7027, -0.01, preflight(paths)["identity"])
+    run_repeat_stage("summary", paths, torch.device("cpu"))
+    stage = paths.output_dir / "seed_7027"
+    payload_path = stage / "payload.json"
+    payload = json.loads(payload_path.read_text())
+    payload["delta_f1"] = -0.02
+    payload["paired_report"]["delta_f1"] = -0.02
+    payload_path.write_text(json.dumps(payload), encoding="utf-8")
+    manifest_path = stage / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["file_hashes"]["payload.json"] = sha256_file(payload_path)
+    manifest_path.write_text(json.dumps(manifest))
+    with pytest.raises(ValueError, match="summary|changed|identity"):
+        run_repeat_stage("summary", paths, torch.device("cpu"))
+
+
+def test_cli_freeze_reports_only_compact_result(temporal_dataset, tmp_path, capsys):
+    from scripts.known_k_temporal_repeats import main
+
+    paths = _fixture_paths(temporal_dataset, tmp_path)
+    code = main(["freeze", "--data-dir", str(paths.pilot.data_dir),
+                 "--frozen-s1b-dir", str(paths.pilot.frozen_s1b_dir),
+                 "--pilot-dir", str(paths.pilot.output_dir),
+                 "--pilot-config", str(paths.pilot.config_path),
+                 "--output-dir", str(paths.output_dir),
+                 "--protocol", str(paths.protocol_path),
+                 "--notebook", str(paths.notebook_path), "--device", "cpu"])
+    assert code == 0
+    assert (paths.output_dir / "freeze" / "complete").is_file()
+    printed = capsys.readouterr().out
+    assert "frozen" in printed
+    assert "paired_report" not in printed

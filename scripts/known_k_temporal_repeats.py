@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+import argparse
 import json
 import math
 import statistics
@@ -178,6 +179,14 @@ def _run_seed(paths: RepeatPaths, seed: int, device: torch.device, identity: dic
         if resume:
             raise ValueError("completed seed cannot be resumed")
         return read_stage(root, stage, identity)[1]
+    config = _config(paths.pilot.config_path)
+    data_dir = Path(paths.pilot.data_dir)
+    with np.load(data_dir / "train.npz", allow_pickle=False) as archive:
+        n_train = len(archive["source_counts"])
+    with np.load(data_dir / "validation.npz", allow_pickle=False) as archive:
+        n_validation = len(archive["source_counts"])
+    if require_full and (n_train, n_validation) != (9990, 1998):
+        raise ValueError("full repeat requires exactly 9990 train and 1998 validation cascades")
     progress = root / f".{stage}-progress"
     if progress.exists():
         if not resume:
@@ -192,14 +201,6 @@ def _run_seed(paths: RepeatPaths, seed: int, device: torch.device, identity: dic
         progress.mkdir(parents=True)
         (progress / "input_identity.json").write_text(
             json.dumps(identity, ensure_ascii=False, indent=2), encoding="utf-8")
-    config = _config(paths.pilot.config_path)
-    data_dir = Path(paths.pilot.data_dir)
-    with np.load(data_dir / "train.npz", allow_pickle=False) as archive:
-        n_train = len(archive["source_counts"])
-    with np.load(data_dir / "validation.npz", allow_pickle=False) as archive:
-        n_validation = len(archive["source_counts"])
-    if require_full and (n_train, n_validation) != (9990, 1998):
-        raise ValueError("full repeat requires exactly 9990 train and 1998 validation cascades")
     _, graph = load_graph_archive(data_dir / "graph.npz")
     builder = SnapshotFeatureBuilder(graph, distance_cap=int(config["data"].get("distance_cap", 10)))
     names = tuple(config["data"]["feature_names"])
@@ -328,7 +329,49 @@ def run_repeat_stage(
     elif (root / "seed_7028").exists():
         raise ValueError("seed 7028 exists despite non-positive 7027")
     payload = summarize_repeats(verified["pilot"], repeats)
+    seed_manifest_hashes = {
+        str(seed): sha256_file(root / f"seed_{seed}" / "manifest.json") for seed in repeats
+    }
     if (root / "summary").exists():
-        return read_stage(root, "summary", identity)[1]
+        saved = read_stage(root, "summary", identity)[1]
+        if saved.get("seed_manifest_hashes") != seed_manifest_hashes:
+            raise ValueError("completed summary references changed seed stage manifests")
+        return saved
+    payload["seed_manifest_hashes"] = seed_manifest_hashes
     write_stage(root, "summary", {"identity": identity}, payload)
     return read_stage(root, "summary", identity)[1]
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Fixed known-k GCN repeat stages")
+    parser.add_argument("stage", choices=("freeze", "seed_7027", "seed_7028", "summary"))
+    parser.add_argument("--data-dir", type=Path, required=True)
+    parser.add_argument("--frozen-s1b-dir", type=Path, required=True)
+    parser.add_argument("--pilot-dir", type=Path, required=True)
+    parser.add_argument("--pilot-config", type=Path, required=True)
+    parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument("--protocol", type=Path, required=True)
+    parser.add_argument("--notebook", type=Path, required=True)
+    parser.add_argument("--device", default="cuda")
+    parser.add_argument("--resume", action="store_true")
+    args = parser.parse_args(argv)
+    paths = RepeatPaths(
+        pilot=KnownKPaths(args.data_dir, args.frozen_s1b_dir, args.pilot_dir, args.pilot_config),
+        output_dir=args.output_dir, protocol_path=args.protocol, notebook_path=args.notebook,
+    )
+    payload = run_repeat_stage(args.stage, paths, torch.device(args.device), resume=args.resume)
+    if args.stage == "freeze":
+        compact = {name: payload[name] for name in ("status", "reference_seed", "repeat_seeds")}
+    elif args.stage == "summary":
+        compact = {name: payload[name] for name in
+                   ("status", "mean_repeat_delta_f1", "sample_sd_repeat_delta_f1",
+                    "positive_delta_each_repeat")}
+    else:
+        compact = {"seed": payload["seed"], "delta_f1": payload["delta_f1"],
+                   "best_epoch": payload["best_epoch"], "output": payload["output"]}
+    print(json.dumps(compact, ensure_ascii=False, allow_nan=False), flush=True)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

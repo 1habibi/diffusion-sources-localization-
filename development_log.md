@@ -676,6 +676,12 @@ Primary сравнение — temporal vs snapshot, secondary — temporal vs e
 
 Пользователь одобрил записанный дизайн сообщением «давай делаем». Подготовлен `docs/superpowers/plans/2026-10-03-known-k-temporal-gcn-repeats.md`: четыре последовательных TDD-этапа — проверка и freeze исходного pilot, защищённое обучение каждого fixed seed, честная сводка/стоп-правило и Colab handoff. План проверен на совпадение интерфейсов и границ со спецификацией; код, Drive и `master` не менялись. Для начала реализации требуется просмотр и утверждение самого плана.
 
+## 57. Нативная реализация изолированных повторов (2026-10-03)
+
+После выбора пользователем нативного исполнения создана отдельная ветка/worktree `experiment/known-k-temporal-gcn-repeats` от зафиксированного pilot `385d79a`; старый pilot и `master` не изменялись. Код новых стадий помещён в `scripts/`, вне набора `src/diffusion_sources/*.py`, SHA-256 которого уже записан в pilot 7026. Read-only preflight проверяет старые stage manifests/complete, checkpoint и payload, исходные данные/config/S1b и `quality_gate.passed=true`; новый freeze фиксирует hashes runner/protocol/notebook. Реализованы отдельные seed 7027/7028 с теми же train/validation/config, SHA-проверяемым resume, парным сравнением контроля на тех же примерах, запретом 7028 при `delta_f1 ≤ 0` у 7027 и сводкой без псевдонезависимого объединения каскадов. Новый Colab notebook требует отдельную точную фразу для каждого GPU-запуска. Документация: `docs/colab_known_k_temporal_gcn_repeats.md`.
+
+TDD-проверки выполнялись RED→GREEN по freeze, seed/контролю, stop-rule/summary и notebook. Первый полный прогон показал 9 падений старых UI-тестов только из-за отсутствия игнорируемой Git резервной папки в новом worktree. Исходные 69 файлов скопированы без удаления в аналогичную игнорируемую папку; SHA-256 backup manifest источника и копии совпал (`1614dfbf5ef0450fbed140fe2e498e2e73b1b466b5f38d39f980e55e96af3d70`). Повторный полный прогон: **481 passed**, 2 прежних предупреждения PyTorch, 471,15 с. `compileall`, JSON notebook, `git diff --check` прошли; разница исходников `src/diffusion_sources` и `thesis_report/` относительно базы pilot пуста. Реальные Colab fit 7027/7028 и новые метрики **не** выполнялись, independent holdout не открывался. Нужен независимый review и публикация только экспериментальной ветки; merge в `master` не планируется.
+
 ## История обновлений
 
 - **2026-08-12:** создан журнал и зафиксировано состояние проекта после завершения программного MVP и Facebook-пилота.
