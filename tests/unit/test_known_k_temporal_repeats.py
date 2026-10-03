@@ -122,6 +122,22 @@ def test_preflight_rejects_missing_complete_and_failed_gate(temporal_dataset, tm
         preflight(paths)
 
 
+def test_preflight_rejects_signed_but_stale_pilot_checkpoint_sidecar(temporal_dataset, tmp_path):
+    from scripts.known_k_temporal_repeats import preflight
+
+    paths = _fixture_paths(temporal_dataset, tmp_path)
+    stage = paths.pilot.output_dir / "pilot"
+    sidecar = stage / "last_checkpoint.pt.sha256"
+    sidecar.write_text("0" * 64 + "\n", encoding="ascii")
+    manifest_path = stage / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["file_hashes"][sidecar.name] = sha256_file(sidecar)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    with pytest.raises(ValueError, match="sidecar|checkpoint"):
+        preflight(paths)
+    assert not paths.output_dir.exists()
+
+
 def test_preflight_rejects_protected_output_overlap(temporal_dataset, tmp_path):
     from dataclasses import replace
     from scripts.known_k_temporal_repeats import preflight

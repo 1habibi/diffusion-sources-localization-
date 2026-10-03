@@ -68,6 +68,10 @@ def preflight(paths: RepeatPaths) -> dict:
                 "history.json", "history.csv", "best_model.pt", "payload.json"}
     if not required <= set(pilot_manifest["file_hashes"]):
         raise ValueError("pilot manifest omits required checkpoint or history hashes")
+    checkpoint = old_root / "pilot" / "last_checkpoint.pt"
+    sidecar = old_root / "pilot" / "last_checkpoint.pt.sha256"
+    if sidecar.read_text(encoding="ascii").strip() != sha256_file(checkpoint):
+        raise ValueError("pilot checkpoint SHA-256 sidecar does not match checkpoint")
     if pilot_payload.get("quality_gate", {}).get("passed") is not True:
         raise ValueError("pilot quality gate did not pass")
     source_dir = Path(__file__).resolve().parents[1] / "src" / "diffusion_sources"
