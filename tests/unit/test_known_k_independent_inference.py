@@ -1,6 +1,7 @@
 """Explicit opening and frozen known-k inference boundaries."""
 
 from pathlib import Path
+import copy
 
 import networkx as nx
 import numpy as np
@@ -89,6 +90,82 @@ def test_frozen_pairing_has_no_target_in_model_input():
     assert row["candidate_sources"] == [0]
     assert row["snapshot_estimated"]["count_accuracy"] == 0.0
     assert row["candidate"]["f1"] == 1.0
+    assert row["control"]["symmetric_set_distance"] == 0.0
+    assert row["control"]["hit_at_1_hop"] == 1.0
+    assert row["control"]["hit_at_2_hop"] == 1.0
+    assert row["control"]["exact_set_accuracy"] == 1.0
+
+
+def _tiny_row(index=0):
+    from scripts.known_k_independent_inference import _score_case
+    from diffusion_sources.dataset import graph_to_edge_index
+
+    graph = nx.path_graph(5)
+    final = np.zeros((5, 5), dtype=np.float32)
+    final[:, 0] = [1, 1, 0, 0, 0]
+
+    class Candidate:
+        def __call__(self, data):
+            return torch.tensor([5., 1., 0., 0., 0.])
+
+    class Frozen:
+        def __call__(self, data):
+            return torch.tensor([0., 5., 4., 0., 0.]), torch.tensor([[0., 8., 0.]])
+
+    return _score_case(graph, graph_to_edge_index(graph), final, np.ones(5, dtype=bool),
+                       np.asarray([1, 0, 0, 0, 0], dtype=bool), 1, frozenset({0}),
+                       index, Candidate(), Frozen(), torch.device("cpu"))
+
+
+def test_missing_duplicate_or_reordered_row_rejected():
+    from scripts.known_k_independent_inference import validate_seed_rows
+
+    rows = [_tiny_row(0), _tiny_row(1)]
+    validate_seed_rows(rows, expected_n=2)
+    with pytest.raises(ValueError, match="row|index|length"):
+        validate_seed_rows(rows[:1], expected_n=2)
+    with pytest.raises(ValueError, match="row|index"):
+        validate_seed_rows(rows[::-1], expected_n=2)
+    with pytest.raises(ValueError, match="row|index"):
+        validate_seed_rows([rows[0], rows[0]], expected_n=2)
+
+
+@pytest.mark.parametrize("field,replacement", [
+    ("true_sources", [1]), ("candidate_ids", [0, 1, 2, 3]),
+    ("early_mask_hash", "changed"), ("control_sources", [2]),
+    ("snapshot_estimated_sources", [1]), ("candidate_mask_hash", "changed"),
+    ("k", 2), ("candidate_count", 4),
+])
+def test_changed_pairing_rejected(field, replacement):
+    from scripts.known_k_independent_inference import validate_seed_rows
+
+    reference = [_tiny_row(0), _tiny_row(1)]
+    changed = copy.deepcopy(reference)
+    changed[1][field] = replacement
+    with pytest.raises(ValueError, match="pair|row|candidate|k"):
+        validate_seed_rows(changed, reference, expected_n=2)
+
+
+def test_invalid_candidate_set_and_nonfinite_metric_rejected():
+    from scripts.known_k_independent_inference import validate_seed_rows
+
+    row = _tiny_row()
+    row["candidate_sources"] = [99]
+    with pytest.raises(ValueError, match="candidate"):
+        validate_seed_rows([row], expected_n=1)
+    row = _tiny_row()
+    row["candidate"]["f1"] = float("nan")
+    with pytest.raises(ValueError, match="finite|metric"):
+        validate_seed_rows([row], expected_n=1)
+
+
+def test_known_k_row_cannot_claim_count_accuracy():
+    from scripts.known_k_independent_inference import validate_seed_rows
+
+    row = _tiny_row()
+    row["control"]["count_accuracy"] = 1.0
+    with pytest.raises(ValueError, match="count_accuracy|known-k"):
+        validate_seed_rows([row], expected_n=1)
 
 
 def test_completed_seed_stage_is_read_not_recomputed(sealed_case, monkeypatch):
@@ -99,11 +176,8 @@ def test_completed_seed_stage_is_read_not_recomputed(sealed_case, monkeypatch):
 
     def collect(paths, seed, device):
         calls.append(seed)
-        return {"rows": [{"index": i, "k": 1, "candidate_count": 5,
-                          "true_sources": [0], "candidate_sources": [0],
-                          "control_sources": [0], "early_mask_hash": "a",
-                          "candidate_mask_hash": "b", "candidate": {"f1": 1.},
-                          "control": {"f1": 1.}} for i in range(1998)],
+        base = _tiny_row()
+        return {"rows": [{**base, "index": i} for i in range(1998)],
                 "candidate": {"all": {"f1": 1.}}, "control": {"all": {"f1": 1.}}}
 
     monkeypatch.setattr(module, "_collect_report", collect)

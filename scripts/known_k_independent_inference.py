@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from pathlib import Path
 
 import numpy as np
@@ -27,6 +28,9 @@ from scripts.known_k_independent_artifacts import IndependentKnownKPaths, SEEDS
 from scripts.known_k_independent_generation import verify_seal
 
 OPEN_TOKEN = "OPEN_KNOWN_K_INDEPENDENT_HOLDOUT"
+KNOWN_METRICS = frozenset({"precision", "recall", "f1", "exact_set_accuracy",
+                           "source_to_set_distance", "set_to_source_distance",
+                           "symmetric_set_distance", "hit_at_1_hop", "hit_at_2_hop"})
 
 
 def _opened_identity(paths: IndependentKnownKPaths) -> dict:
@@ -129,6 +133,52 @@ def _group_metrics(rows: list[dict], label: str) -> dict:
     }
 
 
+def validate_seed_rows(rows: list[dict], reference_rows: list[dict] | None = None,
+                       *, expected_n: int = 1998) -> None:
+    """Reject incomplete or unpaired results before making a seed stage permanent."""
+    if len(rows) != expected_n or (reference_rows is not None and len(reference_rows) != expected_n):
+        raise ValueError("Seed row length mismatch")
+    shared = ("index", "k", "candidate_count", "true_sources", "candidate_ids",
+              "early_mask_hash", "candidate_mask_hash", "snapshot_estimated_k",
+              "snapshot_estimated_sources", "snapshot_sources", "control_sources",
+              "snapshot_estimated", "snapshot", "control")
+    for index, row in enumerate(rows):
+        if row.get("index") != index:
+            raise ValueError(f"Seed row index mismatch: {index}")
+        k = row.get("k")
+        ids = row.get("candidate_ids")
+        truth = row.get("true_sources")
+        if (k not in (1, 2, 3) or not isinstance(ids, list)
+                or ids != sorted(set(ids)) or row.get("candidate_count") != len(ids)
+                or len(ids) < max(5, k) or not isinstance(truth, list)
+                or truth != sorted(set(truth)) or len(truth) != k
+                or not set(truth) <= set(ids)):
+            raise ValueError(f"Seed row {index}: invalid k, truth or candidate set")
+        for name in ("snapshot_sources", "control_sources", "candidate_sources",
+                     "snapshot_estimated_sources"):
+            sources = row.get(name)
+            wanted = row.get("snapshot_estimated_k") if name == "snapshot_estimated_sources" else k
+            if (not isinstance(sources, list) or sources != sorted(set(sources))
+                    or len(sources) != wanted or not set(sources) <= set(ids)):
+                raise ValueError(f"Seed row {index}: invalid {name} candidate prediction")
+        for name in ("early_mask_hash", "candidate_mask_hash"):
+            digest = row.get(name)
+            if (not isinstance(digest, str) or len(digest) != 64
+                    or any(char not in "0123456789abcdef" for char in digest)):
+                raise ValueError(f"Seed row {index}: invalid {name}")
+        for name in ("snapshot", "control", "candidate", "snapshot_estimated"):
+            metrics = row.get(name)
+            required = (KNOWN_METRICS | {"count_accuracy", "count_mae"}
+                        if name == "snapshot_estimated" else KNOWN_METRICS)
+            if (not isinstance(metrics, dict) or set(metrics) != required
+                    or any(not isinstance(value, (int, float)) or not math.isfinite(value)
+                           for value in metrics.values())):
+                raise ValueError(f"Seed row {index}: invalid or nonfinite {name} metric; known-k count_accuracy is N/A")
+        if reference_rows is not None and any(row.get(name) != reference_rows[index].get(name)
+                                              for name in shared):
+            raise ValueError(f"Seed row {index}: paired truth, masks or control mismatch")
+
+
 def _collect_report(paths: IndependentKnownKPaths, seed: int, device: torch.device) -> dict:
     verify_opened(paths)  # This must precede every target-array access.
     if device.type == "cuda" and not torch.cuda.is_available():
@@ -191,10 +241,22 @@ def evaluate_seed(paths: IndependentKnownKPaths, seed: int, device: torch.device
     identity = _seed_identity(paths, seed)
     stage = f"seed_{seed}"
     if (paths.reports / stage).exists():
-        return read_stage(paths.reports, stage, identity)[1]
+        saved = read_stage(paths.reports, stage, identity)[1]
+        validate_seed_rows(saved["rows"])
+        return saved
     if list(paths.reports.glob(f".{stage}-*")):
         raise ValueError(f"Partial {stage} stage; no overwrite")
     report = _collect_report(paths, seed, device)
+    if report.get("count_accuracy") is not None or report.get("n", 1998) != 1998:
+        raise ValueError("Known-k report must not claim learned count accuracy")
+    reference = None
+    for other in SEEDS:
+        if other != seed and (paths.reports / f"seed_{other}").exists():
+            prior = read_stage(paths.reports, f"seed_{other}", _seed_identity(paths, other))[1]
+            validate_seed_rows(prior["rows"])
+            reference = prior["rows"]
+            break
+    validate_seed_rows(report["rows"], reference)
     if _seed_identity(paths, seed) != identity:
         raise ValueError("Frozen identity changed during inference")
     write_stage(paths.reports, stage, {"identity": identity, "device": str(device)}, report)
