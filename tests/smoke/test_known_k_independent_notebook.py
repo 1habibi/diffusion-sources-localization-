@@ -4,6 +4,11 @@ import json
 from pathlib import Path
 
 import pytest
+import torch
+
+from tests.unit.test_known_k_independent_artifacts import case  # noqa: F401
+from tests.unit.test_known_k_independent_generation import _fake_generator
+from tests.unit.test_known_k_independent_summary import _report
 
 
 NOTEBOOK = Path("notebooks/colab_known_k_temporal_gcn_independent.ipynb")
@@ -63,3 +68,42 @@ def test_missing_drive_path_stops_in_paths_cell(tmp_path):
     with pytest.raises(FileNotFoundError):
         exec(code["paths"], scope)
     assert not (tmp_path / "missing-drive").exists()
+
+
+def test_synthetic_guarded_lifecycle(case, monkeypatch):
+    """Exercise real stage boundaries with synthetic files, never a Drive dataset."""
+    from scripts import known_k_independent_generation as generation
+    from scripts import known_k_independent_inference as inference
+    from scripts.known_k_independent_artifacts import freeze_inputs, verify_freeze
+    from scripts.known_k_independent_summary import save_summary
+
+    assert not case.reports.exists()
+    frozen = freeze_inputs(case)
+    assert frozen == verify_freeze(case)
+    generated = []
+    monkeypatch.setattr(generation, "generate_dataset", _fake_generator(case, generated))
+    sealed = generation.generate_and_seal(case)
+    assert generated == [5007026]
+    assert sealed["evaluation_status"] == "sealed_unopened"
+    assert sealed["target_metrics_computed"] is False
+    with pytest.raises(ValueError, match="confirmation"):
+        inference.open_evaluation(case, "wrong")
+    assert not (case.reports / "opened").exists()
+    opened = inference.open_evaluation(case, "OPEN_KNOWN_K_INDEPENDENT_HOLDOUT")
+    assert opened["evaluation_status"] == "opened"
+
+    def synthetic_report(paths, seed, device):
+        assert paths == case and device.type == "cpu"
+        return _report(seed, {7026: 80, 7027: 120, 7028: 140}[seed])
+
+    monkeypatch.setattr(inference, "_collect_report", synthetic_report)
+    reports = [inference.evaluate_seed(case, seed, torch.device("cpu"))
+               for seed in (7026, 7027, 7028)]
+    assert [report["seed"] for report in reports] == [7026, 7027, 7028]
+    summary = save_summary(case)
+    assert summary == save_summary(case)
+    assert summary["evaluation_role"] == "independent_confirmation"
+    with (case.reports / "seed_7027/payload.json").open("ab") as stream:
+        stream.write(b"tamper")
+    with pytest.raises(ValueError, match="hash|mismatch"):
+        save_summary(case)
