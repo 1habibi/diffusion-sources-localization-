@@ -23,10 +23,10 @@ from scripts.known_k_independent_summary import summarize_reports
 CORE_FIELDS = (
     "index", "k", "candidate_count", "true_sources", "candidate_ids",
     "early_mask_hash", "candidate_mask_hash", "control_sources", "control",
+    "snapshot_estimated_k", "snapshot_estimated", "snapshot",
 )
 AUXILIARY_FIELDS = (
-    "snapshot_estimated_k", "snapshot_estimated_sources", "snapshot_sources",
-    "snapshot_estimated", "snapshot",
+    "snapshot_estimated_sources", "snapshot_sources",
 )
 AMENDMENT_DIRECTORY = "post_open_amendment_v1"
 

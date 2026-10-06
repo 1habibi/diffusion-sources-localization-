@@ -26,11 +26,8 @@ def test_pairing_accepts_only_auxiliary_snapshot_rank_tie():
     audit = pairing_audit(reference, current)
     assert audit["core_pairing_exact"] is True
     assert audit["auxiliary_mismatch_counts"] == {
-        "snapshot_estimated_k": 0,
         "snapshot_estimated_sources": 1,
         "snapshot_sources": 1,
-        "snapshot_estimated": 0,
-        "snapshot": 0,
     }
     assert audit["first_auxiliary_mismatch_indices"] == [1440]
 
@@ -41,13 +38,21 @@ def test_pairing_accepts_only_auxiliary_snapshot_rank_tie():
     ("true_sources", [0, 1, 9]),
     ("control_sources", [0, 2, 9]),
     ("control", {"f1": -1}),
+    ("snapshot_estimated_k", 2),
+    ("snapshot_estimated", "change_f1"),
+    ("snapshot", "change_f1"),
 ])
 def test_pairing_rejects_changed_core_input_or_control(field, changed):
     from scripts.known_k_independent_amendment import pairing_audit
 
     reference = _report(7026, 80)["rows"]
     current = copy.deepcopy(reference)
-    current[1440][field] = changed
+    if changed == "change_f1":
+        current[1440][field]["f1"] += .01
+    else:
+        current[1440][field] = changed
+    if field == "snapshot_estimated_k":
+        current[1440]["snapshot_estimated_sources"] = [0, 1]
     with pytest.raises(ValueError, match="paired|control|input"):
         pairing_audit(reference, current)
 
