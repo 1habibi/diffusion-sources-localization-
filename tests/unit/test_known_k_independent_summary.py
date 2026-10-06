@@ -101,6 +101,26 @@ def test_snapshot_estimated_k_is_separate_from_known_k_gate(monkeypatch):
     assert "count_accuracy" not in result["metrics"]["candidate"]["mean"]
 
 
+def test_subgroups_publish_secondary_metrics_for_both_known_k_arms(monkeypatch):
+    from scripts import known_k_independent_summary as module
+
+    monkeypatch.setattr(module, "paired_bootstrap_ci", lambda *a, **kw: (.01, .10))
+    result = module.summarize_reports(_three())
+    wanted = {"precision", "recall", "f1", "exact_set_accuracy",
+              "symmetric_set_distance", "hit_at_1_hop", "hit_at_2_hop"}
+    for family in ("by_k", "by_candidates"):
+        for group in result[family].values():
+            for arm in ("control", "candidate"):
+                assert wanted <= set(group[arm])
+                assert "count_accuracy" not in group[arm]
+                if not group["n_per_seed"]:
+                    assert all(value is None for value in group[arm].values())
+            if not group["n_per_seed"]:
+                continue
+            assert group["control_f1"] == pytest.approx(group["control"]["f1"])
+            assert group["candidate_f1"] == pytest.approx(group["candidate"]["f1"])
+
+
 def test_missing_seed_rejected():
     from scripts.known_k_independent_summary import summarize_reports
 

@@ -58,6 +58,16 @@ def test_run_all_stops_before_open_and_no_training():
     assert "evaluate_test" not in "\n".join(code.values())
 
 
+def test_setup_requires_reviewed_revision_before_import():
+    code = {cell["id"]: _source(cell) for cell in _cells() if cell["cell_type"] == "code"}
+    setup = code["setup"]
+    assert "PINNED_REVISION = input(" in setup
+    assert "re.fullmatch(r'[0-9a-f]{40}', PINNED_REVISION)" in setup
+    assert "if REVISION != PINNED_REVISION:" in setup
+    assert setup.index("if REVISION != PINNED_REVISION:") < setup.index("from scripts import known_k_independent_artifacts")
+    assert "'pull'" not in setup
+
+
 def test_missing_drive_path_stops_in_paths_cell(tmp_path):
     code = {cell["id"]: _source(cell) for cell in _cells() if cell["cell_type"] == "code"}
     from scripts.known_k_independent_artifacts import IndependentKnownKPaths

@@ -23,12 +23,21 @@ def _metric_table(reports: list[dict], label: str) -> dict:
 
 def _group(rows_by_seed: list[list[dict]], indices: np.ndarray) -> dict:
     count = int(indices.sum())
+    names = tuple(sorted(rows_by_seed[0][0]["control"]))
     if not count:
-        return {"n_per_seed": 0, "control_f1": None, "candidate_f1": None, "delta_f1": None}
-    control = np.asarray([[row["control"]["f1"] for row in rows] for rows in rows_by_seed])[:, indices]
-    candidate = np.asarray([[row["candidate"]["f1"] for row in rows] for rows in rows_by_seed])[:, indices]
-    return {"n_per_seed": count, "control_f1": float(control.mean()),
-            "candidate_f1": float(candidate.mean()), "delta_f1": float((candidate - control).mean())}
+        missing = {name: None for name in names}
+        return {"n_per_seed": 0, "control": missing, "candidate": missing.copy(),
+                "control_f1": None, "candidate_f1": None, "delta_f1": None}
+
+    def arm(label: str) -> dict:
+        return {name: float(np.mean([[row[label][name] for row, include in zip(rows, indices, strict=True)
+                                      if include] for rows in rows_by_seed])) for name in names}
+
+    control = arm("control")
+    candidate = arm("candidate")
+    return {"n_per_seed": count, "control": control, "candidate": candidate,
+            "control_f1": control["f1"], "candidate_f1": candidate["f1"],
+            "delta_f1": candidate["f1"] - control["f1"]}
 
 
 def summarize_reports(reports: dict[int, dict]) -> dict:
